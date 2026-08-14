@@ -611,6 +611,28 @@
     });
   }
 
+  // Paleta fixa: cada atividade cadastrada ganha uma cor pela POSIÇÃO dela
+  // na lista, então a cor é sempre a mesma toda vez que abrir o app (não é
+  // aleatória) e bate com a legenda embaixo da grade.
+  var PALETA_ATIV = [
+    { fundo: "#BFD9F2", borda: "#7FA8CC" },
+    { fundo: "#FFE0A3", borda: "#D6A233" },
+    { fundo: "#C9E6C9", borda: "#7FAE7F" },
+    { fundo: "#E6CFE6", borda: "#B08AB0" },
+    { fundo: "#F5D5C8", borda: "#C58F79" },
+    { fundo: "#CFE3E6", borda: "#84AEB5" },
+    { fundo: "#E8E0BC", borda: "#B5A874" },
+    { fundo: "#DCD3F0", borda: "#9F92C9" }
+  ];
+  function corDaAtividade_(nomeAtividade) {
+    var idx = currentAtividades.findIndex(function (a) { return a.nome === nomeAtividade; });
+    if (idx === -1) {
+      // atividade que não está mais cadastrada - cor neutra, mas ainda visível
+      return { fundo: "#E5E0D4", borda: "#B9B0A0" };
+    }
+    return PALETA_ATIV[idx % PALETA_ATIV.length];
+  }
+
   function renderSemana() {
     var el = document.getElementById("content");
     var html = toggleButtonsHtml_();
@@ -627,51 +649,88 @@
       return;
     }
 
-    html += '<div style="display:flex;gap:8px;margin-bottom:12px;">' +
+    html += '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
       '<button class="photo-btn" id="btn-copiar-semana-anterior" style="background:#8A5A44;flex:1;">📋 Copiar Semana</button>' +
       '<button class="photo-btn" id="btn-compartilhar-semana" style="background:#2F7DB0;flex:1;">📤 Compartilhar</button>' +
     '</div>';
+    html += '<div style="font-size:11px;color:#8A8072;margin-bottom:8px;">Toque numa célula vazia pra lançar direto. Toque numa preenchida pra editar.</div>';
 
-    html += '<div style="overflow-x:auto;">';
-    html += '<table style="border-collapse:collapse;width:100%;min-width:640px;">';
-    html += '<tr><th style="text-align:left;font-family:\'IBM Plex Mono\',monospace;font-size:10.5px;color:#6B6153;padding:6px 8px;border-bottom:2px solid #DCD3BC;width:110px;">FUNCIONÁRIO</th>';
+    html += '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">';
+    html += '<table style="border-collapse:separate;border-spacing:3px;width:100%;min-width:660px;">';
+    html += '<tr><th style="text-align:left;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6B6153;padding:4px 6px;width:96px;">FUNCIONÁRIO</th>';
     dias.forEach(function (d) {
       var dt = new Date(d + "T00:00:00");
-      html += '<th style="text-align:left;font-family:\'IBM Plex Mono\',monospace;font-size:10.5px;color:#6B6153;padding:6px 8px;border-bottom:2px solid #DCD3BC;">' +
-        NOMES_DIA_SEMANA[dt.getDay()] + ' ' + fmtDate(d).slice(0, 5) + '</th>';
+      html += '<th style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6B6153;padding:4px 6px;">' +
+        fmtDate(d).slice(0, 5) + '<br><span style="font-size:11px;color:#4A4136;font-weight:700;">' + NOMES_DIA_SEMANA[dt.getDay()] + '</span></th>';
     });
     html += '</tr>';
+
+    var atividadesUsadas = {};
 
     currentFuncionarios.forEach(function (funcObj) {
       var func = funcObj.nome;
       html += '<tr>';
-      html += '<td style="font-size:12.5px;font-weight:600;padding:8px;border-bottom:1px solid #E5DFC9;vertical-align:top;">👷 ' + escapeHtml(func) + '</td>';
+      html += '<td style="font-size:12px;font-weight:700;padding:6px;vertical-align:middle;background:#FFFDF8;border:1px solid #DCD3BC;border-radius:4px;">' + escapeHtml(func) + '</td>';
       dias.forEach(function (d) {
         var blocos = getRegistrosDia(func, d);
         var ocupadoDia = getMinutosOcupados(func, d);
         var estourou = ocupadoDia > MINUTOS_UTEIS_DIA;
-        html += '<td style="padding:6px 8px;border-bottom:1px solid #E5DFC9;vertical-align:top;min-width:130px;' + (estourou ? "background:#F8E3D8;" : "") + '">';
         if (!blocos.length) {
-          html += '<span style="font-size:11px;color:#C9BC9C;">—</span>';
+          html += '<td style="padding:0;min-width:118px;">' +
+            '<div data-nova-cel="' + escapeHtml(func) + '|' + d + '" style="border:1.5px dashed #D2C7AB;border-radius:5px;min-height:52px;display:flex;align-items:center;justify-content:center;color:#C0B49A;font-size:18px;cursor:pointer;background:#FBF8F1;">+</div>' +
+          '</td>';
         } else {
+          html += '<td style="padding:0;min-width:118px;vertical-align:top;">';
           blocos.forEach(function (r) {
-            html += '<div style="background:#EFE7D3;border-radius:3px;padding:4px 6px;margin-bottom:4px;font-size:11px;' + (r.concluida ? "opacity:.6;" : "") + '">' +
-              '<div style="font-weight:600;' + (r.concluida ? "text-decoration:line-through;" : "") + '">' + (r.concluida ? "✅ " : "") + escapeHtml(r.atividade) + (r.setor ? ' (' + escapeHtml(r.setor) + ')' : '') + '</div>' +
-              '<div style="color:#6B6153;">' + escapeHtml(r.horarioInicio) + '–' + escapeHtml(r.horarioFim) + '</div>' +
+            atividadesUsadas[r.atividade] = true;
+            var cor = corDaAtividade_(r.atividade);
+            html += '<div data-edit-cel="' + r.id + '" style="background:' + cor.fundo + ';border:1px solid ' + cor.borda + ';border-radius:5px;padding:5px 6px;margin-bottom:3px;font-size:10.5px;cursor:pointer;' + (r.concluida ? "opacity:.55;" : "") + '">' +
+              '<div style="font-weight:700;line-height:1.25;' + (r.concluida ? "text-decoration:line-through;" : "") + '">' + (r.concluida ? "✅ " : "") + escapeHtml(r.atividade) + '</div>' +
+              (r.setor ? '<div style="font-weight:600;color:#4A4136;">' + escapeHtml(r.setor) + '</div>' : '') +
+              '<div style="color:#5C5445;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;">' + escapeHtml(r.horarioInicio) + '–' + escapeHtml(r.horarioFim) + '</div>' +
             '</div>';
           });
-          if (estourou) html += '<div style="font-size:10px;color:#B4442E;font-weight:600;">⚠ ' + formatMin(ocupadoDia - MINUTOS_UTEIS_DIA) + ' além do expediente</div>';
+          if (estourou) {
+            html += '<div style="font-size:9.5px;color:#B4442E;font-weight:700;padding:1px 2px;">⚠ ' + formatMin(ocupadoDia - MINUTOS_UTEIS_DIA) + ' a mais</div>';
+          }
+          html += '<div data-nova-cel="' + escapeHtml(func) + '|' + d + '" style="border:1px dashed #D2C7AB;border-radius:4px;text-align:center;color:#C0B49A;font-size:13px;cursor:pointer;padding:1px;">+</div>';
+          html += '</td>';
         }
-        html += '</td>';
       });
       html += '</tr>';
     });
     html += '</table></div>';
+
+    // legenda - só as atividades que aparecem nessa semana, pra não poluir
+    var listaLegenda = Object.keys(atividadesUsadas);
+    if (listaLegenda.length) {
+      html += '<div style="margin-top:14px;background:#FFFDF8;border:1px solid #DCD3BC;border-radius:6px;padding:10px 12px;">' +
+        '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;letter-spacing:.06em;color:#6B6153;text-transform:uppercase;margin-bottom:7px;">Legenda de cores</div>';
+      listaLegenda.forEach(function (nome) {
+        var cor = corDaAtividade_(nome);
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">' +
+          '<span style="width:16px;height:16px;border-radius:4px;background:' + cor.fundo + ';border:1px solid ' + cor.borda + ';flex-shrink:0;"></span>' +
+          '<span style="font-size:12px;">' + escapeHtml(nome) + '</span>' +
+        '</div>';
+      });
+      html += '</div>';
+    }
+
     el.innerHTML = html;
     wireToggleButtons_();
     document.getElementById("btn-copiar-semana-anterior").addEventListener("click", function () { copiarSemanaAnterior(segunda); });
     document.getElementById("btn-compartilhar-semana").addEventListener("click", function () { compartilharSemana(segunda, dias); });
     wireSemanaPicker();
+    // toque em célula vazia -> já abre o modal com funcionário e dia prontos
+    el.querySelectorAll("[data-nova-cel]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var partes = b.getAttribute("data-nova-cel").split("|");
+        abrirModalAtividade(null, partes[0], partes[1]);
+      });
+    });
+    el.querySelectorAll("[data-edit-cel]").forEach(function (b) {
+      b.addEventListener("click", function () { abrirModalAtividade(b.getAttribute("data-edit-cel")); });
+    });
   }
   function wireSemanaPicker() {
     document.getElementById("semana-picker").addEventListener("change", function (e) {
@@ -912,11 +971,14 @@
   }
 
   // ================= MODAL NOVA/EDITAR ATIVIDADE =================
-  function abrirModalAtividade(id) {
+  // funcPre/diaPre: quando o toque veio da grade da Semana, já vem com o
+  // funcionário e o dia daquela célula prontos, pra não ter que escolher de
+  // novo (é o que deixa o preenchimento rápido).
+  function abrirModalAtividade(id, funcPre, diaPre) {
     editingId = id || null;
     var registro = id ? registros.find(function (r) { return r.id === id; }) : null;
     document.getElementById("ativ-modal-title").textContent = registro ? "Editar Atividade" : "Nova Atividade";
-    document.getElementById("ativ-data").value = registro ? registro.data : diaSelecionado;
+    document.getElementById("ativ-data").value = registro ? registro.data : (diaPre || diaSelecionado);
 
     var atividadeSel = document.getElementById("ativ-atividade");
     atividadeSel.innerHTML = currentAtividades.map(function (a) { return '<option value="' + escapeHtml(a.nome) + '">' + escapeHtml(a.nome) + '</option>'; }).join("");
@@ -924,9 +986,9 @@
 
     var listaFunc = document.getElementById("ativ-funcionarios-list");
     listaFunc.innerHTML = currentFuncionarios.map(function (f) {
-      var checked = registro ? (registro.funcionario === f.nome ? "checked" : "") : "";
+      var marcado = registro ? (registro.funcionario === f.nome) : (funcPre === f.nome);
       var disabled = registro ? "disabled" : ""; // editando: não muda de funcionário, só os dados
-      return '<label class="checkbox-row"><input type="checkbox" value="' + escapeHtml(f.nome) + '" ' + checked + ' ' + disabled + '> ' + escapeHtml(f.nome) + '</label>';
+      return '<label class="checkbox-row"><input type="checkbox" value="' + escapeHtml(f.nome) + '" ' + (marcado ? "checked" : "") + ' ' + disabled + '> ' + escapeHtml(f.nome) + '</label>';
     }).join("");
 
     document.getElementById("ativ-setor-lista").innerHTML = currentSetoresAtiv.map(function (s) { return '<option value="' + escapeHtml(s) + '">'; }).join("");
