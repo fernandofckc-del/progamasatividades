@@ -206,6 +206,31 @@
 </div>
 
 <!-- MODAL DE EXCLUSÃO -->
+<!-- MODAL DE DUPLICAR ATIVIDADE -->
+<div class="modal-overlay" id="modal-dup-overlay">
+  <div class="modal-box">
+    <button class="modal-close" id="btn-close-dup">✕</button>
+    <div class="modal-title">Duplicar Atividade</div>
+    <div class="modal-sub" id="dup-resumo">—</div>
+    <div class="field">
+      <span class="field-label">Para qual dia</span>
+      <input id="dup-data" type="date">
+    </div>
+    <div class="field">
+      <span class="field-label">Setor</span>
+      <input id="dup-setor" list="dup-setor-lista" placeholder="Ex.: TA1" autocomplete="off">
+      <datalist id="dup-setor-lista"></datalist>
+      <div style="font-size:11px;color:#8A8072;margin-top:3px;">Já vem com o mesmo setor. Troque se for outro.</div>
+    </div>
+    <div class="field">
+      <span class="field-label">Funcionário</span>
+      <select id="dup-funcionario"></select>
+    </div>
+    <div id="dup-preview" class="preview-box" style="background:#EFE7D3;border-radius:4px;padding:9px 10px;font-size:12px;color:#4A4136;margin-bottom:10px;">—</div>
+    <button class="btn-salvar" id="btn-confirm-dup" style="width:100%;background:#4C6B2F;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;">Duplicar</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-del-ativ-overlay">
   <div class="modal-box">
     <button class="modal-close" id="btn-close-del-ativ">✕</button>
@@ -580,6 +605,7 @@
               '<span style="display:flex;gap:8px;align-items:center;">' +
                 '<span class="bloco-horario">' + escapeHtml(r.horarioInicio) + '–' + escapeHtml(r.horarioFim) + '</span>' +
                 '<button class="del-btn" data-toggle-concluida="' + r.id + '" title="' + (r.concluida ? "Marcar como pendente" : "Marcar como concluída") + '">' + (r.concluida ? "✅" : "⬜") + '</button>' +
+                '<button class="del-btn" data-dup-ativ="' + r.id + '" title="Duplicar">📋</button>' +
                 '<button class="del-btn" data-edit-ativ="' + r.id + '" title="Editar">✏️</button>' +
                 '<button class="del-btn" data-del-ativ="' + r.id + '" title="Excluir">🗑</button>' +
               '</span>' +
@@ -602,6 +628,9 @@
     wireDiaPicker();
     el.querySelectorAll("[data-toggle-concluida]").forEach(function (b) {
       b.addEventListener("click", function () { toggleConcluida(b.getAttribute("data-toggle-concluida")); });
+    });
+    el.querySelectorAll("[data-dup-ativ]").forEach(function (b) {
+      b.addEventListener("click", function () { abrirModalDuplicar(b.getAttribute("data-dup-ativ")); });
     });
     el.querySelectorAll("[data-edit-ativ]").forEach(function (b) {
       b.addEventListener("click", function () { abrirModalAtividade(b.getAttribute("data-edit-ativ")); });
@@ -707,6 +736,7 @@
               '</div>' +
               '<div style="display:flex;gap:4px;justify-content:flex-end;margin-top:3px;border-top:1px solid rgba(0,0,0,.08);padding-top:3px;">' +
                 '<button data-toggle-cel="' + r.id + '" title="' + (r.concluida ? "Marcar como pendente" : "Marcar como concluída") + '" style="background:none;border:none;font-size:12px;cursor:pointer;padding:0 2px;">' + (r.concluida ? "✅" : "⬜") + '</button>' +
+                '<button data-dup-cel="' + r.id + '" title="Duplicar" style="background:none;border:none;font-size:12px;cursor:pointer;padding:0 2px;">📋</button>' +
                 '<button data-edit-cel="' + r.id + '" title="Editar" style="background:none;border:none;font-size:12px;cursor:pointer;padding:0 2px;">✏️</button>' +
                 '<button data-del-cel="' + r.id + '" title="Excluir" style="background:none;border:none;font-size:12px;cursor:pointer;padding:0 2px;">🗑</button>' +
               '</div>' +
@@ -752,6 +782,9 @@
     });
     el.querySelectorAll("[data-edit-cel]").forEach(function (b) {
       b.addEventListener("click", function (e) { e.stopPropagation(); abrirModalAtividade(b.getAttribute("data-edit-cel")); });
+    });
+    el.querySelectorAll("[data-dup-cel]").forEach(function (b) {
+      b.addEventListener("click", function (e) { e.stopPropagation(); abrirModalDuplicar(b.getAttribute("data-dup-cel")); });
     });
     el.querySelectorAll("[data-del-cel]").forEach(function (b) {
       b.addEventListener("click", function (e) { e.stopPropagation(); abrirModalExcluir(b.getAttribute("data-del-cel")); });
@@ -1239,6 +1272,66 @@
     }, "image/png");
   }
 
+  // ================= DUPLICAR ATIVIDADE =================
+  var duplicandoId = null;
+  function abrirModalDuplicar(id) {
+    var r = registros.find(function (x) { return x.id === id; });
+    if (!r) return;
+    duplicandoId = id;
+    document.getElementById("dup-resumo").textContent =
+      r.atividade + (r.setor ? " · " + r.setor : "") + " — hoje em " + fmtDate(r.data) + " com " + r.funcionario;
+    document.getElementById("dup-data").value = addDiasISO(r.data, 1);
+    document.getElementById("dup-setor-lista").innerHTML =
+      currentSetoresAtiv.map(function (x) { return '<option value="' + escapeHtml(x) + '">'; }).join("");
+    document.getElementById("dup-setor").value = r.setor || "";
+    var sel = document.getElementById("dup-funcionario");
+    sel.innerHTML = currentFuncionarios.map(function (f) {
+      return '<option value="' + escapeHtml(f.nome) + '"' + (f.nome === r.funcionario ? " selected" : "") + '>' + escapeHtml(f.nome) + '</option>';
+    }).join("");
+    atualizarPreviewDup_();
+    document.getElementById("modal-dup-overlay").classList.add("active");
+  }
+  function fecharModalDuplicar() {
+    document.getElementById("modal-dup-overlay").classList.remove("active");
+    duplicandoId = null;
+  }
+  function atualizarPreviewDup_() {
+    var r = registros.find(function (x) { return x.id === duplicandoId; });
+    var el = document.getElementById("dup-preview");
+    if (!r) { el.textContent = "—"; return; }
+    var dataDestino = document.getElementById("dup-data").value;
+    var func = document.getElementById("dup-funcionario").value;
+    if (!dataDestino || !func) { el.textContent = "Escolha o dia e o funcionário."; return; }
+    var inicio = getProximoHorarioLivre(func, dataDestino);
+    var fim = somarComPausa(inicio, r.duracaoMin);
+    var ocupado = getMinutosOcupados(func, dataDestino);
+    var sobra = MINUTOS_UTEIS_DIA - ocupado - r.duracaoMin;
+    el.innerHTML = "Vai entrar em <b>" + fmtDate(dataDestino) + "</b>, das <b>" + inicio + "</b> às <b>" + fim + "</b>." +
+      (sobra < 0 ? '<br><span style="color:#B4442E;font-weight:700;">⚠ Passa ' + formatMin(-sobra) + ' do expediente — será dividido automaticamente.</span>'
+                 : '<br>Sobra ' + formatMin(sobra) + ' no dia.');
+  }
+  function confirmarDuplicar() {
+    var r = registros.find(function (x) { return x.id === duplicandoId; });
+    if (!r) return;
+    var dataDestino = document.getElementById("dup-data").value;
+    var setor = document.getElementById("dup-setor").value.trim();
+    var func = document.getElementById("dup-funcionario").value;
+    if (!dataDestino) { showToast("Escolha o dia."); return; }
+    if (!func) { showToast("Escolha o funcionário."); return; }
+    // usa o mesmo distribuidor da criação normal, então respeita o expediente
+    // e divide em continuação se não couber no dia.
+    var novos = distribuirAtividadeComContinuacao_(func, dataDestino, r.atividade, setor,
+                                                   r.duracaoMin, r.areaHa || 0, r.observacao || "");
+    novos.forEach(function (b) { registros.unshift(b); });
+    saveRegistros();
+    fecharModalDuplicar();
+    renderContent();
+    showToast(novos.length > 1
+      ? "Duplicada — não coube no dia, foi dividida automaticamente."
+      : "Atividade duplicada para " + fmtDate(dataDestino) + ".");
+    trySync();
+  }
+
   function toggleConcluida(id) {
     var r = registros.find(function (r) { return r.id === id; });
     if (!r) return;
@@ -1699,6 +1792,14 @@
     document.getElementById("ativ-funcionarios-list").addEventListener("change", atualizarCalculoAtiv);
     document.getElementById("ativ-atividade").addEventListener("change", atualizarCalculoAtiv);
     document.getElementById("ativ-area").addEventListener("input", atualizarCalculoAtiv);
+
+    document.getElementById("btn-close-dup").addEventListener("click", fecharModalDuplicar);
+    document.getElementById("modal-dup-overlay").addEventListener("click", function (e) {
+      if (e.target.id === "modal-dup-overlay") fecharModalDuplicar();
+    });
+    document.getElementById("btn-confirm-dup").addEventListener("click", confirmarDuplicar);
+    document.getElementById("dup-data").addEventListener("change", atualizarPreviewDup_);
+    document.getElementById("dup-funcionario").addEventListener("change", atualizarPreviewDup_);
 
     document.getElementById("btn-close-del-ativ").addEventListener("click", fecharModalExcluir);
     document.getElementById("modal-del-ativ-overlay").addEventListener("click", function (e) { if (e.target.id === "modal-del-ativ-overlay") fecharModalExcluir(); });
