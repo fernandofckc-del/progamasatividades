@@ -337,6 +337,10 @@
   // ================= ESTADO =================
   var CONFIG_KEY = "prog_ativ_config_v1";
   var ATIV_KEY = "prog_ativ_records_v1";
+  // "Lápide": ids já apagados. Sem isso, se sobrar alguma linha duplicada na
+  // planilha, a atividade apagada volta na próxima sincronização.
+  var ATIV_TOMBSTONE_KEY = "prog_ativ_tombstone_v1";
+  var ativTombstones = {};
   var RENDDIA_KEY = "prog_ativ_rendimentos_v1";
   var BANCO_KEY = "prog_ativ_banco_horas_v1";
   var lancamentosBanco = [];
@@ -391,6 +395,17 @@
     } catch (e) {}
   }
   function saveConfig() { try { localStorage.setItem(CONFIG_KEY, JSON.stringify(config)); } catch (e) {} }
+  function loadTombstones() {
+    try {
+      var raw = localStorage.getItem(ATIV_TOMBSTONE_KEY);
+      ativTombstones = raw ? JSON.parse(raw) : {};
+    } catch (e) { ativTombstones = {}; }
+  }
+  function saveTombstones() {
+    try { localStorage.setItem(ATIV_TOMBSTONE_KEY, JSON.stringify(ativTombstones)); } catch (e) {}
+  }
+  function marcarApagado_(id) { ativTombstones[id] = true; saveTombstones(); }
+
   function loadRegistros() {
     try {
       var raw = localStorage.getItem(ATIV_KEY);
@@ -684,10 +699,17 @@
           blocos.forEach(function (r) {
             atividadesUsadas[r.atividade] = true;
             var cor = corDaAtividade_(r.atividade);
-            html += '<div data-edit-cel="' + r.id + '" style="background:' + cor.fundo + ';border:1px solid ' + cor.borda + ';border-radius:5px;padding:5px 6px;margin-bottom:3px;font-size:10.5px;cursor:pointer;' + (r.concluida ? "opacity:.55;" : "") + '">' +
-              '<div style="font-weight:700;line-height:1.25;' + (r.concluida ? "text-decoration:line-through;" : "") + '">' + (r.concluida ? "✅ " : "") + escapeHtml(r.atividade) + '</div>' +
-              (r.setor ? '<div style="font-weight:600;color:#4A4136;">' + escapeHtml(r.setor) + '</div>' : '') +
-              '<div style="color:#5C5445;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;">' + escapeHtml(r.horarioInicio) + '–' + escapeHtml(r.horarioFim) + '</div>' +
+            html += '<div style="background:' + cor.fundo + ';border:1px solid ' + cor.borda + ';border-radius:5px;padding:5px 6px;margin-bottom:3px;font-size:10.5px;' + (r.concluida ? "opacity:.55;" : "") + '">' +
+              '<div data-edit-cel="' + r.id + '" style="cursor:pointer;">' +
+                '<div style="font-weight:700;line-height:1.25;' + (r.concluida ? "text-decoration:line-through;" : "") + '">' + (r.concluida ? "✅ " : "") + escapeHtml(r.atividade) + '</div>' +
+                (r.setor ? '<div style="font-weight:600;color:#4A4136;">' + escapeHtml(r.setor) + '</div>' : '') +
+                '<div style="color:#5C5445;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;">' + escapeHtml(r.horarioInicio) + '–' + escapeHtml(r.horarioFim) + '</div>' +
+              '</div>' +
+              '<div style="display:flex;gap:4px;justify-content:flex-end;margin-top:3px;border-top:1px solid rgba(0,0,0,.08);padding-top:3px;">' +
+                '<button data-toggle-cel="' + r.id + '" title="' + (r.concluida ? "Marcar como pendente" : "Marcar como concluída") + '" style="background:none;border:none;font-size:12px;cursor:pointer;padding:0 2px;">' + (r.concluida ? "✅" : "⬜") + '</button>' +
+                '<button data-edit-cel="' + r.id + '" title="Editar" style="background:none;border:none;font-size:12px;cursor:pointer;padding:0 2px;">✏️</button>' +
+                '<button data-del-cel="' + r.id + '" title="Excluir" style="background:none;border:none;font-size:12px;cursor:pointer;padding:0 2px;">🗑</button>' +
+              '</div>' +
             '</div>';
           });
           if (estourou) {
@@ -729,7 +751,13 @@
       });
     });
     el.querySelectorAll("[data-edit-cel]").forEach(function (b) {
-      b.addEventListener("click", function () { abrirModalAtividade(b.getAttribute("data-edit-cel")); });
+      b.addEventListener("click", function (e) { e.stopPropagation(); abrirModalAtividade(b.getAttribute("data-edit-cel")); });
+    });
+    el.querySelectorAll("[data-del-cel]").forEach(function (b) {
+      b.addEventListener("click", function (e) { e.stopPropagation(); abrirModalExcluir(b.getAttribute("data-del-cel")); });
+    });
+    el.querySelectorAll("[data-toggle-cel]").forEach(function (b) {
+      b.addEventListener("click", function (e) { e.stopPropagation(); toggleConcluida(b.getAttribute("data-toggle-cel")); });
     });
   }
   function wireSemanaPicker() {
@@ -1315,6 +1343,7 @@
     postToBackend({ action: "delete_atividade_prog", adminToken: pass, id: pendingDeleteId }).then(function (res) {
       if (res && res.ok) {
         var registro = registros.find(function (r) { return r.id === pendingDeleteId; });
+        marcarApagado_(pendingDeleteId);
         registros = registros.filter(function (r) { return r.id !== pendingDeleteId; });
         saveRegistros();
         if (registro) recalcularCascata(registro.funcionario, registro.data);
@@ -1438,7 +1467,7 @@
           var localById = {};
           registros.forEach(function (r) { localById[r.id] = r; });
           res.programacaoAtividades.forEach(function (row) {
-            if (!row.id) return;
+            if (!row.id || ativTombstones[row.id]) return;
             var campos = {
               data: row.data, funcionario: row.funcionario, atividade: row.atividade, setor: row.setor || "",
               duracaoMin: parseInt(row.duracao_min, 10) || 0, areaHa: parseFloat(row.area_ha) || 0,
@@ -1454,6 +1483,15 @@
               localById[row.id] = novo;
             }
           });
+          // Se o servidor já não devolve mais um id apagado, a exclusão colou
+          // de verdade - dá pra tirar da lápide e não deixar ela crescer.
+          var idsNoServidor = {};
+          res.programacaoAtividades.forEach(function (row) { if (row.id) idsNoServidor[row.id] = true; });
+          var mudouTomb = false;
+          Object.keys(ativTombstones).forEach(function (tid) {
+            if (!idsNoServidor[tid]) { delete ativTombstones[tid]; mudouTomb = true; }
+          });
+          if (mudouTomb) saveTombstones();
           saveRegistros();
         }
         if (res.rendimentosDiarios) {
@@ -1622,6 +1660,7 @@
   document.addEventListener("DOMContentLoaded", function () {
     loadConfig();
     loadRegistros();
+    loadTombstones();
     loadRendimentosDiarios();
     loadLancamentosBanco();
     try {
