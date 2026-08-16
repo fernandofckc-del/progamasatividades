@@ -1,4 +1,4 @@
-var CACHE_NAME = 'registro-irrigacao-v16';
+var CACHE_NAME = 'prog-atividades-app-v4';
 var ASSETS = [
   './',
   './index.html',
@@ -11,8 +11,6 @@ self.addEventListener('install', function (event) {
   event.waitUntil(
     caches.open(CACHE_NAME).then(function (cache) {
       // Guarda cada arquivo separadamente: se um falhar, os outros ainda são salvos.
-      // (cache.addAll falha tudo-ou-nada se UM arquivo der erro - isso causava o app
-      // não funcionar offline de jeito nenhum.)
       return Promise.all(
         ASSETS.map(function (url) {
           return cache.add(url).catch(function (err) {
@@ -53,11 +51,9 @@ self.addEventListener('fetch', function (event) {
     event.respondWith(
       fetch(event.request).then(function (fresh) {
         // event.waitUntil() é essencial aqui: sem ele, o navegador pode
-        // encerrar o service worker assim que a resposta é entregue,
-        // ANTES dessa gravação no cache terminar - aí a atualização nunca
-        // chega a ficar salva, e a versão antiga continua sendo servida
-        // quando o celular fica offline (foi exatamente esse bug que
-        // fazia uma aba já removida "voltar" sem internet).
+        // encerrar o service worker assim que a resposta é entregue, ANTES
+        // dessa gravação no cache terminar - aí a atualização nunca chega a
+        // ficar salva, e a versão antiga continua sendo servida offline.
         event.waitUntil(
           caches.open(CACHE_NAME).then(function (cache) {
             return cache.put(event.request, fresh.clone());
