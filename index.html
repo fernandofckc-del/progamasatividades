@@ -935,14 +935,23 @@
     return porFunc;
   }
 
-  // Compara quantos setores estão vencendo essa semana com quantas pessoas
-  // dá pra contar (equipe menos quem faltou essa semana, pelo Banco de
-  // Horas). Usa o padrão já observado de 4 setores/dia com 6 pessoas.
+  // Semana que o alerta olha: 0 = semana atual, 1 = semana que vem. Como
+  // quinta e sexta costumam ser o dia de programar a semana seguinte,
+  // já abre direto em "semana que vem" nesses dois dias - sem isso, o
+  // alerta ficava sempre preso na semana que já ia acabar.
+  var alertaSemanaOffset = (function () {
+    var diaSemana = new Date().getDay(); // 0=domingo ... 4=quinta, 5=sexta
+    return (diaSemana === 4 || diaSemana === 5) ? 1 : 0;
+  })();
+
+  // Compara quantos setores estão vencendo naquela semana com quantas
+  // pessoas dá pra contar (equipe menos quem faltou, pelo Banco de Horas).
+  // Usa o padrão já observado de 4 setores/dia com 6 pessoas.
   // IMPORTANTE: não conhece folga fixa (tipo "Adilson folga terça"), só o
   // que foi lançado como Falta - então é uma estimativa, não exata.
   function calcularAlertaDisponibilidade_() {
     if (!currentTalhoes.length || !currentFuncionarios.length) return "";
-    var segunda = getSegundaDaSemana(todayStr());
+    var segunda = addDiasISO(getSegundaDaSemana(todayStr()), alertaSemanaOffset * 7);
     var sexta = addDiasISO(segunda, 4);
     var segundaDate = parseISODateUTC_(segunda), sextaDate = parseISODateUTC_(sexta);
     if (!segundaDate || !sextaDate) return "";
@@ -984,10 +993,10 @@
       texto = setoresVencendo + " setor(es) vencendo, cabem em " + diasNecessarios + " dia(s) com a equipe completa. Você tem " + pessoasDisponiveis + " pessoa(s) disponível(is).";
     }
 
-    return '<div style="background:' + fundo + ';border-left:4px solid ' + cor + ';border-radius:4px;padding:10px 12px;margin-top:14px;">' +
+    return '<div style="background:' + fundo + ';border-left:4px solid ' + cor + ';border-radius:4px;padding:10px 12px;margin-top:8px;">' +
       '<div style="font-size:12.5px;font-weight:700;color:' + cor + ';">' + titulo + '</div>' +
       '<div style="font-size:11.5px;color:#4A4136;margin-top:3px;">' + texto + '</div>' +
-      '<div style="font-size:10px;color:#8A8072;margin-top:5px;">Conta a semana de ' + fmtDate(segunda) + ' a ' + fmtDate(sexta) + '. Não sabe de folga fixa, só falta lançada no Banco de Horas.</div>' +
+      '<div style="font-size:10px;color:#8A8072;margin-top:5px;">Não sabe de folga fixa, só falta lançada no Banco de Horas.</div>' +
     '</div>';
   }
 
@@ -1060,13 +1069,26 @@
       html += '</div>';
     }
 
-    // ---- Alerta: gente disponível x setores vencendo essa semana ----
+    // ---- Alerta: gente disponível x setores vencendo (com seletor de semana) ----
+    var segundaAlerta = addDiasISO(getSegundaDaSemana(todayStr()), alertaSemanaOffset * 7);
+    var sextaAlerta = addDiasISO(segundaAlerta, 4);
+    html += '<div style="display:flex;gap:6px;margin-top:14px;">' +
+      '<button class="del-btn" data-semana-offset="0" style="flex:1;border:1px solid ' + (alertaSemanaOffset === 0 ? "#2F7DB0" : "#D2C7AB") + ';border-radius:14px;padding:6px 10px;font-size:11.5px;' + (alertaSemanaOffset === 0 ? "background:#2F7DB0;color:#fff;font-weight:700;" : "background:#FBF8F1;color:#4A4136;") + '">Semana atual</button>' +
+      '<button class="del-btn" data-semana-offset="1" style="flex:1;border:1px solid ' + (alertaSemanaOffset === 1 ? "#2F7DB0" : "#D2C7AB") + ';border-radius:14px;padding:6px 10px;font-size:11.5px;' + (alertaSemanaOffset === 1 ? "background:#2F7DB0;color:#fff;font-weight:700;" : "background:#FBF8F1;color:#4A4136;") + '">Semana que vem</button>' +
+    '</div>' +
+    '<div style="font-size:10px;color:#8A8072;margin-top:4px;">' + fmtDate(segundaAlerta) + ' a ' + fmtDate(sextaAlerta) + '</div>';
     var alertaGente = calcularAlertaDisponibilidade_();
     if (alertaGente) html += alertaGente;
 
     el.innerHTML = html;
     wireToggleButtons_();
     wirePainelPickers();
+    el.querySelectorAll("[data-semana-offset]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        alertaSemanaOffset = parseInt(b.getAttribute("data-semana-offset"), 10);
+        renderPainel();
+      });
+    });
   }
   function wirePainelPickers() {
     document.getElementById("painel-data-inicio").addEventListener("change", function (e) {
