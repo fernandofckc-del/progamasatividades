@@ -896,6 +896,101 @@
     return totais;
   }
 
+  // O campo de rendimento real é texto livre ("4,5 ha", "terminou o setor",
+  // etc.) - aqui só aproveita o que dá pra ler como número, e ignora o
+  // resto sem quebrar nada.
+  function extrairNumeroRendimento_(texto) {
+    if (!texto) return null;
+    var m = String(texto).replace(",", ".").match(/-?\d+(\.\d+)?/);
+    if (!m) return null;
+    var n = parseFloat(m[0]);
+    return isFinite(n) ? n : null;
+  }
+
+  // Rendimento real x planejado por pessoa, no período - só entram dias em
+  // que a pessoa tinha área planejada E anotou um número no fim do dia,
+  // pra comparação fazer sentido (maçã com maçã).
+  function calcularRendimentoComparado_(dataIni, dataFim) {
+    var porFunc = {};
+    currentFuncionarios.forEach(function (f) { porFunc[f.nome] = { planejado: 0, real: 0, dias: 0 }; });
+    var planejadoPorDia = {}; // { "func|data": soma de areaHa }
+    registros.forEach(function (r) {
+      if (r._pendingDelete || !r.areaHa) return;
+      if (r.data < dataIni || r.data > dataFim) return;
+      var chave = r.funcionario + "|" + r.data;
+      planejadoPorDia[chave] = (planejadoPorDia[chave] || 0) + r.areaHa;
+    });
+    rendimentosDiarios.forEach(function (rd) {
+      if (rd._pendingDelete) return;
+      if (rd.data < dataIni || rd.data > dataFim) return;
+      var chave = rd.funcionario + "|" + rd.data;
+      var planejadoDoDia = planejadoPorDia[chave];
+      var realNum = extrairNumeroRendimento_(rd.rendimento);
+      if (planejadoDoDia === undefined || realNum === null) return; // sem os dois lados, não compara
+      if (!porFunc[rd.funcionario]) porFunc[rd.funcionario] = { planejado: 0, real: 0, dias: 0 };
+      porFunc[rd.funcionario].planejado += planejadoDoDia;
+      porFunc[rd.funcionario].real += realNum;
+      porFunc[rd.funcionario].dias += 1;
+    });
+    return porFunc;
+  }
+
+  // Compara quantos setores estão vencendo essa semana com quantas pessoas
+  // dá pra contar (equipe menos quem faltou essa semana, pelo Banco de
+  // Horas). Usa o padrão já observado de 4 setores/dia com 6 pessoas.
+  // IMPORTANTE: não conhece folga fixa (tipo "Adilson folga terça"), só o
+  // que foi lançado como Falta - então é uma estimativa, não exata.
+  function calcularAlertaDisponibilidade_() {
+    if (!currentTalhoes.length || !currentFuncionarios.length) return "";
+    var segunda = getSegundaDaSemana(todayStr());
+    var sexta = addDiasISO(segunda, 4);
+    var segundaDate = parseISODateUTC_(segunda), sextaDate = parseISODateUTC_(sexta);
+    if (!segundaDate || !sextaDate) return "";
+
+    var setoresVencendo = currentTalhoes.filter(function (t) {
+      var info = situacaoSetor_(t.nome);
+      if (!info) return false;
+      if (info.status === "atrasado" || info.status === "nunca") return true;
+      if (info.proxima && info.proxima >= segundaDate && info.proxima <= sextaDate) return true;
+      return false;
+    }).length;
+    if (!setoresVencendo) return "";
+
+    var SETORES_POR_DIA = 4, PESSOAS_POR_DIA = 6; // padrão já usado nas últimas semanas
+    var diasNecessarios = Math.ceil(setoresVencendo / SETORES_POR_DIA);
+
+    var faltasEssaSemanaSet = {};
+    lancamentosBanco.filter(function (l) { return !l._pendingDelete && l.tipo === "Falta" && l.data >= segunda && l.data <= sexta; })
+      .forEach(function (l) { faltasEssaSemanaSet[l.funcionario] = true; });
+    var pessoasDisponiveis = currentFuncionarios.length - Object.keys(faltasEssaSemanaSet).length;
+
+    // A pergunta que importa não é "pessoa-dias" (isso ficava sempre positivo
+    // demais, já que ninguém faz só manutenção a semana toda) - é bem mais
+    // direto: dá pra sequer FORMAR a equipe do dia (6 pessoas)? E se der,
+    // quantos dias de equipe completa isso consome da semana?
+    var faltaPraFormarEquipe = PESSOAS_POR_DIA - pessoasDisponiveis;
+    var cor, fundo, titulo, texto;
+    if (faltaPraFormarEquipe > 0) {
+      cor = "#B4442E"; fundo = "#FBEDE8";
+      titulo = "🚨 Não dá pra formar a equipe de manutenção";
+      texto = "Precisa de " + PESSOAS_POR_DIA + " pessoas por dia, mas só há " + pessoasDisponiveis + " disponível(is) essa semana - faltam " + faltaPraFormarEquipe + ". " + setoresVencendo + " setor(es) estão vencendo.";
+    } else if (diasNecessarios >= 3) {
+      cor = "#B8862B"; fundo = "#FBF4E4";
+      titulo = "⚠ Manutenção vai tomar quase a semana toda";
+      texto = setoresVencendo + " setor(es) vencendo precisam de " + diasNecessarios + " dia(s) com a equipe completa (" + PESSOAS_POR_DIA + " pessoas) - sobra pouco tempo pra outras atividades.";
+    } else {
+      cor = "#2F6B1F"; fundo = "#F2F8ED";
+      titulo = "✅ Dá pra cobrir a manutenção dessa semana";
+      texto = setoresVencendo + " setor(es) vencendo, cabem em " + diasNecessarios + " dia(s) com a equipe completa. Você tem " + pessoasDisponiveis + " pessoa(s) disponível(is).";
+    }
+
+    return '<div style="background:' + fundo + ';border-left:4px solid ' + cor + ';border-radius:4px;padding:10px 12px;margin-top:14px;">' +
+      '<div style="font-size:12.5px;font-weight:700;color:' + cor + ';">' + titulo + '</div>' +
+      '<div style="font-size:11.5px;color:#4A4136;margin-top:3px;">' + texto + '</div>' +
+      '<div style="font-size:10px;color:#8A8072;margin-top:5px;">Conta a semana de ' + fmtDate(segunda) + ' a ' + fmtDate(sexta) + '. Não sabe de folga fixa, só falta lançada no Banco de Horas.</div>' +
+    '</div>';
+  }
+
   function renderPainel() {
     var el = document.getElementById("content");
     if (!painelDataInicio) painelDataInicio = getSegundaDaSemana(todayStr());
@@ -942,6 +1037,33 @@
       });
       html += '</div>';
     }
+
+    // ---- Rendimento real x planejado, por pessoa ----
+    var comparado = calcularRendimentoComparado_(painelDataInicio, painelDataFim);
+    var comDados = Object.keys(comparado).filter(function (nome) { return comparado[nome].dias > 0; })
+      .map(function (nome) { return Object.assign({ nome: nome }, comparado[nome]); })
+      .sort(function (a, b) { return (b.real / b.planejado) - (a.real / a.planejado); });
+    if (comDados.length) {
+      html += '<div class="func-card" style="margin-top:14px;">' +
+        '<div class="panel-title" style="font-family:\'Oswald\',sans-serif;font-size:14px;font-weight:600;margin-bottom:4px;">Rendimento real x planejado</div>' +
+        '<div style="font-size:11px;color:#8A8072;margin-bottom:12px;">Só entram dias em que a pessoa anotou um número no campo de fim de expediente.</div>';
+      comDados.forEach(function (e) {
+        var pct = e.planejado ? Math.round(e.real / e.planejado * 100) : 0;
+        var cor = pct >= 100 ? "#2F6B1F" : (pct >= 80 ? "#B8862B" : "#B4442E");
+        html += '<div class="bar-row">' +
+          '<div class="bar-label-row"><span class="bar-label">' + escapeHtml(e.nome) + '</span>' +
+            '<span class="bar-count" style="color:' + cor + ';font-weight:700;">' + pct + '%</span></div>' +
+          '<div style="font-size:11px;color:#6B6153;margin:-4px 0 5px;">' + round2Painel_(e.real) + ' ha reais de ' + round2Painel_(e.planejado) + ' ha planejados · ' + e.dias + ' dia(s)</div>' +
+          '<div class="bar-track"><div class="bar-fill" style="width:' + Math.min(100, pct) + '%;background:' + cor + ';"></div></div>' +
+        '</div>';
+      });
+      html += '</div>';
+    }
+
+    // ---- Alerta: gente disponível x setores vencendo essa semana ----
+    var alertaGente = calcularAlertaDisponibilidade_();
+    if (alertaGente) html += alertaGente;
+
     el.innerHTML = html;
     wireToggleButtons_();
     wirePainelPickers();
