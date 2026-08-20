@@ -125,6 +125,17 @@
 <div id="toast" class="toast" style="display:none"></div>
 
 <!-- MODAL DE CONFIGURAÇÃO -->
+<!-- MODAL DE ESCOLHER SETORES (checkbox, com idade da manutenção) -->
+<div class="modal-overlay" id="modal-setores-overlay">
+  <div class="modal-box" style="max-height:85vh;display:flex;flex-direction:column;">
+    <button class="modal-close" id="btn-close-setores">✕</button>
+    <div class="modal-title">Escolher Setores</div>
+    <div class="modal-sub">Toque pra marcar (pode escolher mais de um). O selo mostra há quantos dias está sem manutenção.</div>
+    <div id="setores-picker-lista" style="overflow-y:auto;flex:1;margin-bottom:12px;"></div>
+    <button class="save-btn" id="btn-confirmar-setores" style="margin-top:0;">Usar Setores Escolhidos</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-config-overlay">
   <div class="modal-box">
     <button class="modal-close" id="btn-close-config">✕</button>
@@ -186,6 +197,11 @@
       <span class="field-label">Setor</span>
       <input id="ativ-setor" list="ativ-setor-lista" placeholder="Ex.: TA1" autocomplete="off">
       <datalist id="ativ-setor-lista"></datalist>
+      <div id="ativ-setor-hint" style="font-size:11px;color:#6B6153;margin-top:4px;min-height:14px;"></div>
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <button type="button" id="btn-escolher-setores" style="flex:1;background:#EFE7D3;border:1px solid #D2C7AB;border-radius:4px;padding:8px;font-size:12px;color:#4A4136;cursor:pointer;">📋 Escolher da lista</button>
+        <button type="button" id="btn-sugerir-atrasados" style="flex:1;background:#FBEDE8;border:1px solid #E0B3A8;border-radius:4px;padding:8px;font-size:12px;color:#8A2E2E;cursor:pointer;">⚠ Sugerir atrasados</button>
+      </div>
     </div>
     <div class="field" id="ativ-area-wrap" style="display:none;">
       <span class="field-label">Área a fazer (ha)</span>
@@ -386,6 +402,15 @@
   ];
   var currentFuncionarios = [{ nome: "Encarregado 1", metaHa: 0, turno: "diurno" }, { nome: "Encarregado 2", metaHa: 0, turno: "diurno" }];
   var currentSetoresAtiv = ["TA1", "TA2", "TA3", "TB1", "TB2", "D1"];
+  // Dados de manutenção - vêm do MESMO backend/planilha do app de Registro
+  // de Campo (Code.gs compartilhado), só que esse app não estava lendo
+  // ainda. Servem pra saber quais setores estão vencidos de verdade.
+  var currentTalhoes = [];
+  var currentCulturasManut = [];
+  var manutRecordsCache = [];
+  var TALHOES_CACHE_KEY = "prog_ativ_talhoes_cache_v1";
+  var CULTURAS_MANUT_CACHE_KEY = "prog_ativ_culturas_manut_cache_v1";
+  var MANUT_CACHE_KEY = "prog_ativ_manut_cache_v1";
   var diaSelecionado = todayStr();
   var visaoAtual = "dia"; // "dia", "semana" ou "painel"
   var painelDataInicio = null; // definido no init (segunda da semana atual)
@@ -400,6 +425,56 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
   }
+  function parseISODateUTC_(str) {
+    if (!str) return null;
+    var s2 = String(str);
+    var m1 = s2.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m1) return new Date(Date.UTC(parseInt(m1[1], 10), parseInt(m1[2], 10) - 1, parseInt(m1[3], 10)));
+    var m2 = s2.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (m2) return new Date(Date.UTC(parseInt(m2[3], 10), parseInt(m2[2], 10) - 1, parseInt(m2[1], 10)));
+    return null;
+  }
+  function todayUTC_() {
+    var d = new Date();
+    return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  }
+  function addDaysUTC_(date, n) {
+    var d = new Date(date.getTime());
+    d.setUTCDate(d.getUTCDate() + n);
+    return d;
+  }
+  function diffDaysUTC_(a, b) {
+    return Math.round((a.getTime() - b.getTime()) / 86400000);
+  }
+  function fmtDateUTC_(d) {
+    if (!d) return "—";
+    return String(d.getUTCDate()).padStart(2, "0") + "/" + String(d.getUTCMonth() + 1).padStart(2, "0");
+  }
+  // Situação de um setor: mesmo cálculo usado no app de Registro de Campo
+  // (Painel de Manutenção Preventiva) - atrasado / próximo / em dia / nunca.
+  function getCulturaDoTalhao_(nomeSetor) {
+    var t = currentTalhoes.find(function (x) { return x.nome === nomeSetor; });
+    if (!t) return null;
+    return currentCulturasManut.find(function (c) { return c.nome === t.cultura; }) || { nome: t.cultura, intervalo: 15 };
+  }
+  function situacaoSetor_(nomeSetor) {
+    var cultura = getCulturaDoTalhao_(nomeSetor);
+    if (!cultura) return null; // não é um talhão de manutenção conhecido (ex.: "Sede")
+    var recs = manutRecordsCache.filter(function (r) { return r.setor === nomeSetor && !r.excluido; });
+    if (!recs.length) return { status: "nunca", diasAte: null, diasAtraso: null, proxima: null };
+    recs.sort(function (a, b) {
+      var da = parseISODateUTC_(a.data), db = parseISODateUTC_(b.data);
+      return (db ? db.getTime() : 0) - (da ? da.getTime() : 0);
+    });
+    var last = parseISODateUTC_(recs[0].data);
+    if (!last) return { status: "nunca", diasAte: null, diasAtraso: null, proxima: null };
+    var hoje = todayUTC_();
+    var proxima = addDaysUTC_(last, cultura.intervalo);
+    var diasAte = diffDaysUTC_(proxima, hoje);
+    var status = diasAte < 0 ? "atrasado" : (diasAte <= 3 ? "proximo" : "em_dia");
+    return { status: status, diasAte: diasAte, diasAtraso: diasAte < 0 ? Math.abs(diasAte) : 0, proxima: proxima, lastDate: last };
+  }
+
   function fmtDate(iso) {
     if (!iso) return "";
     var p = iso.split("-");
@@ -616,8 +691,13 @@
         });
       }
       var rendObj = getRendimentoDiario(func, diaSelecionado);
+      // Planejado: soma da área (ha) de todas as atividades do dia que têm
+      // rendimento por hectare configurado - dá pra comparar de relance com
+      // o que a pessoa disse que fez de verdade.
+      var planejadoHa = blocos.reduce(function (s, r) { return s + (parseFloat(r.areaHa) || 0); }, 0);
       html += '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #DCD3BC;">' +
         '<span class="field-label" style="font-size:10px;">Rendimento real do dia (fim de expediente)</span>' +
+        (planejadoHa > 0 ? '<div style="font-size:11px;color:#6B6153;margin-top:2px;">Planejado hoje: <b>' + round2Painel_(planejadoHa) + ' ha</b></div>' : '') +
         '<input type="text" data-rendimento-func="' + escapeHtml(func) + '" value="' + escapeHtml(rendObj ? rendObj.rendimento : "") + '" placeholder="Ex.: 4,5 ha, ou uma anotação livre" style="width:100%;border:1px solid #D2C7AB;background:#FBF8F1;border-radius:3px;padding:8px;font-size:13px;margin-top:4px;">' +
       '</div>';
       html += '</div>';
@@ -1035,6 +1115,100 @@
   // funcPre/diaPre: quando o toque veio da grade da Semana, já vem com o
   // funcionário e o dia daquela célula prontos, pra não ter que escolher de
   // novo (é o que deixa o preenchimento rápido).
+
+  // ================= SETOR: idade, sugestão e seletor por checkbox =================
+  var STATUS_LABEL_ = { atrasado: "Atrasado", proximo: "Próximo do prazo", em_dia: "Em dia", nunca: "Nunca registrada" };
+  var STATUS_COR_ = { atrasado: "#B4442E", proximo: "#B8862B", em_dia: "#2F6B1F", nunca: "#6B6153" };
+
+  function atualizarHintSetor_() {
+    var el = document.getElementById("ativ-setor-hint");
+    if (!el) return;
+    var valor = document.getElementById("ativ-setor").value.trim();
+    if (!valor) { el.textContent = ""; return; }
+    // pode ter mais de um setor separado por vírgula - mostra o pior caso
+    var nomes = valor.split(",").map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+    var piores = nomes.map(situacaoSetor_).filter(function (s) { return s; });
+    if (!piores.length) { el.textContent = ""; return; }
+    var ordem = { atrasado: 0, nunca: 1, proximo: 2, em_dia: 3 };
+    piores.sort(function (a, b) { return ordem[a.status] - ordem[b.status]; });
+    var pior = piores[0];
+    var cor = STATUS_COR_[pior.status];
+    var texto = (pior.status === "nunca") ? "Nunca teve manutenção registrada"
+      : (pior.status === "atrasado") ? "Atrasado há " + pior.diasAtraso + " dia(s)"
+      : (pior.status === "proximo") ? "Vence em breve (" + fmtDateUTC_(pior.proxima) + ")"
+      : "Em dia (próxima em " + fmtDateUTC_(pior.proxima) + ")";
+    el.innerHTML = '<span style="color:' + cor + ';font-weight:700;">●</span> ' + texto +
+      (nomes.length > 1 ? ' <span style="color:#8A8072;">(pior dos ' + nomes.length + ' setores)</span>' : '');
+  }
+
+  function listaTalhoesComStatus_() {
+    return currentTalhoes.map(function (t) {
+      return { talhao: t, info: situacaoSetor_(t.nome) || { status: "em_dia" } };
+    }).sort(function (a, b) {
+      var ordem = { atrasado: 0, nunca: 1, proximo: 2, em_dia: 3 };
+      return ordem[a.info.status] - ordem[b.info.status];
+    });
+  }
+
+  function abrirSeletorSetores_() {
+    if (!currentTalhoes.length) { showToast("Ainda não sincronizou a lista de talhões - abre o app com internet uma vez."); return; }
+    var jaEscolhidos = document.getElementById("ativ-setor").value.split(",").map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+    var el = document.getElementById("setores-picker-lista");
+    var porCultura = {};
+    listaTalhoesComStatus_().forEach(function (item) {
+      var cult = item.talhao.cultura || "Outros";
+      if (!porCultura[cult]) porCultura[cult] = [];
+      porCultura[cult].push(item);
+    });
+    var html = "";
+    Object.keys(porCultura).forEach(function (cult) {
+      html += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10.5px;color:#6B6153;letter-spacing:.06em;text-transform:uppercase;margin:10px 0 6px;">' + escapeHtml(cult) + '</div>';
+      porCultura[cult].forEach(function (item) {
+        var t = item.talhao, info = item.info;
+        var cor = STATUS_COR_[info.status];
+        var marcado = jaEscolhidos.indexOf(t.nome) > -1;
+        var badge = (info.status === "nunca") ? "nunca feito"
+          : (info.status === "atrasado") ? "atrasado " + info.diasAtraso + "d"
+          : (info.status === "proximo") ? "próx. do prazo" : "em dia";
+        html += '<label class="checkbox-row" style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;border-bottom:1px solid #EFEAD9;">' +
+          '<span><input type="checkbox" value="' + escapeHtml(t.nome) + '" ' + (marcado ? "checked" : "") + ' style="margin-right:8px;"> <b>' + escapeHtml(t.nome) + '</b></span>' +
+          '<span style="font-size:10.5px;font-weight:700;color:' + cor + ';">' + badge + '</span>' +
+        '</label>';
+      });
+    });
+    el.innerHTML = html;
+    document.getElementById("modal-setores-overlay").classList.add("active");
+  }
+  function fecharSeletorSetores_() {
+    document.getElementById("modal-setores-overlay").classList.remove("active");
+  }
+  function confirmarSeletorSetores_() {
+    var marcados = Array.prototype.slice.call(document.querySelectorAll("#setores-picker-lista input:checked"))
+      .map(function (c) { return c.value; });
+    document.getElementById("ativ-setor").value = marcados.join(", ");
+    atualizarHintSetor_();
+    fecharSeletorSetores_();
+  }
+
+  // Preenche o campo de setor com os N mais atrasados (empatando entre Coco
+  // e Cacau quando possível), pra evitar o erro que já aconteceu de
+  // programar setor que nem estava vencido enquanto outro ficava esquecido.
+  function sugerirSetoresAtrasados_() {
+    if (!currentTalhoes.length) { showToast("Ainda não sincronizou a lista de talhões - abre o app com internet uma vez."); return; }
+    var comStatus = listaTalhoesComStatus_().filter(function (item) {
+      return item.info.status === "atrasado" || item.info.status === "nunca";
+    });
+    if (!comStatus.length) { showToast("Nenhum setor atrasado no momento 🎉"); return; }
+    comStatus.sort(function (a, b) {
+      var da = a.info.diasAtraso || 999, db = b.info.diasAtraso || 999; // "nunca" conta como muito atrasado
+      return db - da;
+    });
+    var escolhidos = comStatus.slice(0, 4).map(function (item) { return item.talhao.nome; });
+    document.getElementById("ativ-setor").value = escolhidos.join(", ");
+    atualizarHintSetor_();
+    showToast("Sugeridos os " + escolhidos.length + " setores mais atrasados.");
+  }
+
   function abrirModalAtividade(id, funcPre, diaPre) {
     editingId = id || null;
     var registro = id ? registros.find(function (r) { return r.id === id; }) : null;
@@ -1054,6 +1228,7 @@
 
     document.getElementById("ativ-setor-lista").innerHTML = currentSetoresAtiv.map(function (s) { return '<option value="' + escapeHtml(s) + '">'; }).join("");
     document.getElementById("ativ-setor").value = registro ? (registro.setor || "") : "";
+    atualizarHintSetor_();
 
     document.getElementById("ativ-area").value = registro && registro.areaHa ? registro.areaHa : "";
     document.getElementById("ativ-duracao").value = registro ? minToTime(registro.duracaoMin) : "01:00";
@@ -1140,9 +1315,39 @@
     });
     saveRegistros();
     renderContent();
-    if (!totalCopiado) showToast(diasPulados ? "Já tem atividade nos dias dessa semana - apague antes de copiar." : "A semana anterior está vazia, nada pra copiar.");
-    else showToast(totalCopiado + " atividade(s) copiada(s) da semana anterior.");
+    if (!totalCopiado) {
+      showToast(diasPulados ? "Já tem atividade nos dias dessa semana - apague antes de copiar." : "A semana anterior está vazia, nada pra copiar.");
+    } else {
+      var aviso = avaliarSetoresCopiados_(diasAtuais);
+      showToast(totalCopiado + " atividade(s) copiada(s)." + (aviso ? " " + aviso : ""));
+    }
     trySync();
+  }
+
+  // Depois de copiar, confere se algum setor copiado JÁ NÃO PRECISA mais de
+  // manutenção (foi feito nesse meio tempo por outro motivo) ou se ficou de
+  // fora algum setor que está mais atrasado que os copiados - evita repetir
+  // o erro de programar setor que não vencia enquanto outro mais urgente
+  // ficava esquecido.
+  function avaliarSetoresCopiados_(diasNovos) {
+    if (!currentTalhoes.length) return "";
+    var setoresCopiados = {};
+    registros.filter(function (r) { return diasNovos.indexOf(r.data) > -1 && !r._pendingDelete; })
+      .forEach(function (r) {
+        (r.setor || "").split(",").map(function (s) { return s.trim(); }).filter(function (s) { return s; })
+          .forEach(function (s) { setoresCopiados[s] = true; });
+      });
+    var jaEmDia = Object.keys(setoresCopiados).filter(function (s) {
+      var info = situacaoSetor_(s);
+      return info && info.status === "em_dia";
+    });
+    var maisAtrasadosFora = listaTalhoesComStatus_().filter(function (item) {
+      return (item.info.status === "atrasado" || item.info.status === "nunca") && !setoresCopiados[item.talhao.nome];
+    });
+    var partes = [];
+    if (jaEmDia.length) partes.push("⚠ " + jaEmDia.join(", ") + " já não está mais vencido.");
+    if (maisAtrasadosFora.length) partes.push("⚠ " + maisAtrasadosFora.length + " setor(es) mais atrasado(s) ficaram de fora - confere no botão 'Sugerir atrasados'.");
+    return partes.join(" ");
   }
 
   // ================= COMPARTILHAR SEMANA (WhatsApp / PDF) =================
@@ -1556,6 +1761,18 @@
           currentSetoresAtiv = res.setoresAtivLista;
           localStorage.setItem(SETORES_ATIV_CACHE_KEY, JSON.stringify(currentSetoresAtiv));
         }
+        if (res.talhoes && res.talhoes.length) {
+          currentTalhoes = res.talhoes;
+          localStorage.setItem(TALHOES_CACHE_KEY, JSON.stringify(currentTalhoes));
+        }
+        if (res.culturas && res.culturas.length) {
+          currentCulturasManut = res.culturas;
+          localStorage.setItem(CULTURAS_MANUT_CACHE_KEY, JSON.stringify(currentCulturasManut));
+        }
+        if (res.manutencoes) {
+          manutRecordsCache = res.manutencoes.filter(function (r) { return !r.excluido; });
+          localStorage.setItem(MANUT_CACHE_KEY, JSON.stringify(manutRecordsCache));
+        }
         if (res.programacaoAtividades) {
           var localById = {};
           registros.forEach(function (r) { localById[r.id] = r; });
@@ -1768,6 +1985,18 @@
       var cSetores = localStorage.getItem(SETORES_ATIV_CACHE_KEY);
       if (cSetores) currentSetoresAtiv = JSON.parse(cSetores);
     } catch (e) {}
+    try {
+      var cTalhoes = localStorage.getItem(TALHOES_CACHE_KEY);
+      if (cTalhoes) currentTalhoes = JSON.parse(cTalhoes);
+    } catch (e) {}
+    try {
+      var cCulturasM = localStorage.getItem(CULTURAS_MANUT_CACHE_KEY);
+      if (cCulturasM) currentCulturasManut = JSON.parse(cCulturasM);
+    } catch (e) {}
+    try {
+      var cManut = localStorage.getItem(MANUT_CACHE_KEY);
+      if (cManut) manutRecordsCache = JSON.parse(cManut);
+    } catch (e) {}
 
     renderContent();
     refreshSyncPill();
@@ -1780,6 +2009,14 @@
     document.getElementById("btn-save-atividades").addEventListener("click", salvarAtividadesLista);
     document.getElementById("btn-save-funcionarios").addEventListener("click", salvarFuncionariosLista);
     document.getElementById("btn-save-setores-ativ").addEventListener("click", salvarSetoresAtivLista);
+    document.getElementById("ativ-setor").addEventListener("input", atualizarHintSetor_);
+    document.getElementById("btn-escolher-setores").addEventListener("click", abrirSeletorSetores_);
+    document.getElementById("btn-sugerir-atrasados").addEventListener("click", sugerirSetoresAtrasados_);
+    document.getElementById("btn-close-setores").addEventListener("click", fecharSeletorSetores_);
+    document.getElementById("modal-setores-overlay").addEventListener("click", function (e) {
+      if (e.target.id === "modal-setores-overlay") fecharSeletorSetores_();
+    });
+    document.getElementById("btn-confirmar-setores").addEventListener("click", confirmarSeletorSetores_);
 
     document.getElementById("btn-sync-now").addEventListener("click", function () { trySync(); });
 
