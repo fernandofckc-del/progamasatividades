@@ -11,8 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="Atividades">
 <meta name="theme-color" content="#4C6B2F">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" media="print" onload="this.media='all'">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" media="print" onload="this.media='all'">
 <style>
   * { box-sizing: border-box; margin:0; padding:0; }
   body {
@@ -59,6 +58,9 @@
 
   .modal-overlay { display:none; position:fixed; inset:0; background:rgba(27,58,52,.55); z-index:50; align-items:flex-end; justify-content:center; }
   .modal-overlay.active { display:flex; }
+  /* O seletor de setores abre POR CIMA da janela de atividade (antes abria
+     atrás dela e não dava pra tocar) */
+  #modal-setores-overlay { z-index:60; }
   .modal-box { background:#F3EEE0; width:100%; max-width:480px; border-radius:12px 12px 0 0; padding:20px 18px 26px; max-height:88vh; overflow-y:auto; position:relative; }
   .modal-title { font-family:'Oswald', sans-serif; font-size:17px; font-weight:600; margin-bottom:4px; }
   .modal-sub { font-size:12px; color:#6B6153; margin-bottom:16px; line-height:1.4; }
@@ -134,7 +136,7 @@
       <div>
         <div class="plate-label">CONTROLE DE CAMPO</div>
         <div class="plate-title">PROGRAMAÇÃO DE ATIVIDADES</div>
-        <div style="font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:#CFE0BB; margin-top:2px;" id="app-version">v1.2</div>
+        <div style="font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:#CFE0BB; margin-top:2px;" id="app-version">v1.3</div>
       </div>
       <button class="gear-btn" id="btn-open-config">⚙️</button>
     </div>
@@ -523,6 +525,25 @@
   var CULTURAS_MANUT_CACHE_KEY = "prog_ativ_culturas_manut_cache_v1";
   var MANUT_CACHE_KEY = "prog_ativ_manut_cache_v1";
 
+  // ---- Manutenção direto do Firebase ----
+  // Desde 10/09/2026 o app de Registro salva a Manutenção SÓ no Firebase (a
+  // aba "Manutencoes" da planilha parou ali). Sem isso, setor que já teve
+  // manutenção aparecia aqui como atrasado. Este app só LÊ a coleção.
+  var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyAzsUSbMQsjMkADnOToZ3fMWEsPgbAOatg",
+    authDomain: "registroocorrencia-94e27.firebaseapp.com",
+    projectId: "registroocorrencia-94e27",
+    storageBucket: "registroocorrencia-94e27.firebasestorage.app",
+    messagingSenderId: "597413327398",
+    appId: "1:597413327398:web:d6a87eaa7872203434ace7"
+  };
+  var EMAIL_EQUIPE = "equipe@registroocorrencia.app"; // mesma conta da equipe do app de Registro
+  var MANUT_FB_CACHE_KEY = "prog_ativ_manut_firebase_v1";
+  var manutPlanilha = [];     // da planilha (histórico até 10/09)
+  var manutFirebase = null;   // do Firebase (null = ainda não chegou nada)
+  var manutFbStatus = { ok: false, erro: "", quando: 0 };
+  var fbAppProg = null, fbDbProg = null, manutFbOuvindo = false;
+
   // Impedimentos: quando uma atividade da nossa equipe não pôde ser feita
   // porque OUTRA equipe da fazenda entrou na área (fora da programação dela,
   // sem avisar etc.). Fica numa aba própria da planilha.
@@ -706,6 +727,138 @@
     var abs = Math.abs(min);
     var h = Math.floor(abs / 60), m = abs % 60;
     return sinal + h + "h" + (m ? String(m).padStart(2, "0") + "min" : "");
+  }
+
+  // ================= MANUTENÇÃO: PLANILHA + FIREBASE =================
+  function normalizarDataManut_(v) {
+    if (!v) return "";
+    if (v && typeof v.toDate === "function") { // Timestamp do Firestore
+      var d = v.toDate();
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    }
+    return String(v).trim();
+  }
+  // Junta as duas fontes. Excluído no Firebase vale também pra cópia antiga
+  // da planilha (senão um registro apagado voltava pelo histórico).
+  function combinarManutencoes_() {
+    var excluidosFb = {}, vistos = {}, lista = [];
+    (manutFirebase || []).forEach(function (r) { if (r.excluido) excluidosFb[r.id] = true; });
+    (manutFirebase || []).forEach(function (r) {
+      if (r.excluido || vistos[r.id]) return;
+      vistos[r.id] = true; lista.push(r);
+    });
+    manutPlanilha.forEach(function (r) {
+      if (r.excluido || vistos[r.id] || excluidosFb[r.id]) return;
+      vistos[r.id] = true; lista.push(r);
+    });
+    manutRecordsCache = lista;
+  }
+  function descreverErroFb_(err) {
+    var c = String((err && err.code) || err || "");
+    if (/wrong-password|invalid-credential|invalid-login|user-not-found/.test(c)) return "a chave daqui não bate com a do app de Registro";
+    if (/permission-denied/.test(c)) return "o Firebase não deu permissão de leitura";
+    if (/network|offline|unavailable/.test(c)) return "sem internet";
+    if (/operation-not-allowed|admin-restricted/.test(c)) return "o login da equipe não entrou";
+    return c || "erro desconhecido";
+  }
+  function esperarAuthFb_(auth) {
+    return new Promise(function (resolve) {
+      var feito = false, parar = function () {};
+      function fim(u) { if (feito) return; feito = true; try { parar(); } catch (e) {} resolve(u || null); }
+      try { parar = auth.onAuthStateChanged(fim); } catch (e) { fim(null); }
+      setTimeout(function () { try { fim(auth.currentUser); } catch (e) { fim(null); } }, 5000);
+    });
+  }
+  // App Firebase com NOME PRÓPRIO ("programacao"): o login daqui fica
+  // guardado separado do login do app de Registro (os dois moram no mesmo
+  // site e, sem isso, dividiriam a sessão - trocar o usuário aqui podia
+  // atrapalhar registros pendentes de lá). Aqui só se lê, nunca se grava.
+  // Bibliotecas do Firebase (mesma versão do app de Registro) carregadas
+  // DEPOIS que o app já abriu: com sinal fraco no campo, o app não fica
+  // esperando o Firebase pra aparecer na tela.
+  var fbScriptsCarregando = false;
+  function firebaseCompleto_() {
+    return typeof firebase !== "undefined" && !!firebase.initializeApp && !!firebase.auth && !!firebase.firestore;
+  }
+  function carregarScriptsFirebase_(depois) {
+    if (firebaseCompleto_()) { depois(); return; }
+    if (fbScriptsCarregando) return;
+    var faltam = [];
+    if (typeof firebase === "undefined") faltam.push("firebase-app-compat.js");
+    if (typeof firebase === "undefined" || !firebase.auth) faltam.push("firebase-auth-compat.js");
+    if (typeof firebase === "undefined" || !firebase.firestore) faltam.push("firebase-firestore-compat.js");
+    fbScriptsCarregando = true;
+    (function proximo() {
+      if (!faltam.length) { fbScriptsCarregando = false; if (firebaseCompleto_()) depois(); return; }
+      var s = document.createElement("script");
+      s.src = "https://www.gstatic.com/firebasejs/10.13.1/" + faltam.shift();
+      s.onload = proximo;
+      s.onerror = function () {
+        fbScriptsCarregando = false;
+        manutFbStatus.erro = "o Firebase não carregou (sem internet?)";
+      };
+      document.head.appendChild(s);
+    })();
+  }
+
+  var fbIniciando = false;
+  function iniciarFirebaseManut_() {
+    if (manutFbOuvindo || fbIniciando) return;
+    if (!config.token) { manutFbStatus.erro = "falta configurar a chave de sincronização"; return; }
+    if (!firebaseCompleto_()) { carregarScriptsFirebase_(iniciarFirebaseManut_); return; }
+    try {
+      fbAppProg = fbAppProg || (firebase.apps || []).filter(function (a) { return a.name === "programacao"; })[0] ||
+        firebase.initializeApp(FIREBASE_CONFIG, "programacao");
+      fbDbProg = fbDbProg || fbAppProg.firestore();
+    } catch (e) { manutFbStatus.erro = "falha ao iniciar o Firebase"; return; }
+    var auth = fbAppProg.auth();
+    fbIniciando = true;
+    esperarAuthFb_(auth).then(function (u) {
+      if (u) return u; // já entrou antes neste celular - vale até sem internet
+      if (!navigator.onLine) throw { code: "offline" };
+      return auth.signInWithEmailAndPassword(EMAIL_EQUIPE, "equipe-" + config.token).catch(function () {
+        // conta da equipe ainda não ativada / chave diferente: tenta o
+        // acesso anônimo, que o app de Registro ainda aceita
+        return auth.signInAnonymously();
+      });
+    }).then(function () {
+      fbIniciando = false;
+      ouvirManutencaoFirebase_();
+    }).catch(function (err) {
+      fbIniciando = false;
+      manutFbStatus.ok = false;
+      manutFbStatus.erro = descreverErroFb_(err); // tenta de novo na próxima sincronização
+    });
+  }
+  function ouvirManutencaoFirebase_() {
+    if (manutFbOuvindo || !fbDbProg) return;
+    manutFbOuvindo = true;
+    fbDbProg.collection("manutencao").onSnapshot(function (snap) {
+      var lista = [];
+      snap.forEach(function (doc) {
+        var d = doc.data() || {};
+        lista.push({ id: doc.id, setor: String(d.setor || "").trim(), data: normalizarDataManut_(d.data), excluido: !!d.excluido });
+      });
+      manutFirebase = lista;
+      manutFbStatus = { ok: true, erro: "", quando: Date.now() };
+      try { localStorage.setItem(MANUT_FB_CACHE_KEY, JSON.stringify(lista)); } catch (e) {}
+      combinarManutencoes_();
+      renderPreservandoRolagem_();
+    }, function (err) {
+      manutFbOuvindo = false;
+      manutFbStatus.ok = false;
+      manutFbStatus.erro = descreverErroFb_(err);
+    });
+  }
+  // Uma linha pra mostrar de onde vêm os dados de manutenção
+  function avisoFonteManutHtml_() {
+    if (manutFbStatus.ok) {
+      return '<div style="font-size:11px;color:#28603C;margin-bottom:8px;">✓ Manutenções em dia com o app de Registro (Firebase).</div>';
+    }
+    if (manutFirebase && manutFirebase.length) {
+      return '<div style="font-size:11px;color:#8A5A2E;margin-bottom:8px;">Usando as manutenções guardadas da última conexão com o Firebase' + (manutFbStatus.erro ? ' (agora: ' + escapeHtml(manutFbStatus.erro) + ')' : '') + '.</div>';
+    }
+    return '<div style="font-size:11px;color:#B4442E;font-weight:600;margin-bottom:8px;">⚠ Sem acesso às manutenções do Firebase' + (manutFbStatus.erro ? ' (' + escapeHtml(manutFbStatus.erro) + ')' : '') + '. Usando a planilha, que só vai até 10/09 - setor feito depois disso pode aparecer como atrasado.</div>';
   }
 
   // ================= IMPEDIMENTOS (dados) =================
@@ -1302,6 +1455,7 @@
       '<div style="font-size:12.5px;font-weight:700;color:' + cor + ';">' + titulo + '</div>' +
       '<div style="font-size:11.5px;color:#4A4136;margin-top:3px;">' + texto + '</div>' +
       '<div style="font-size:10px;color:#8A8072;margin-top:5px;">Não sabe de folga fixa, só falta lançada no Banco de Horas.</div>' +
+      (manutFbStatus.ok ? '' : '<div style="margin-top:6px;">' + avisoFonteManutHtml_() + '</div>') +
     '</div>';
   }
 
@@ -1788,7 +1942,7 @@
       if (!porCultura[cult]) porCultura[cult] = [];
       porCultura[cult].push(item);
     });
-    var html = "";
+    var html = avisoFonteManutHtml_();
     Object.keys(porCultura).forEach(function (cult) {
       html += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10.5px;color:#6B6153;letter-spacing:.06em;text-transform:uppercase;margin:10px 0 6px;">' + escapeHtml(cult) + '</div>';
       porCultura[cult].forEach(function (item) {
@@ -1846,7 +2000,8 @@
     document.getElementById("ativ-setor").value = escolhidos.join(", ");
     atualizarHintSetor_();
     showToast("Sugeridos os " + escolhidos.length + " setores mais atrasados." +
-      (pulados ? " Pulei " + pulados + " ocupado(s) por outra equipe." : ""));
+      (pulados ? " Pulei " + pulados + " ocupado(s) por outra equipe." : "") +
+      (!manutFbStatus.ok && !(manutFirebase && manutFirebase.length) ? " ⚠ Sem o Firebase: pode ter setor que já foi feito." : ""));
   }
 
   function abrirModalAtividade(id, funcPre, diaPre) {
@@ -2834,8 +2989,10 @@
           localStorage.setItem(CULTURAS_MANUT_CACHE_KEY, JSON.stringify(currentCulturasManut));
         }
         if (res.manutencoes) {
-          manutRecordsCache = res.manutencoes.filter(function (r) { return !r.excluido; });
-          localStorage.setItem(MANUT_CACHE_KEY, JSON.stringify(manutRecordsCache));
+          // histórico da planilha (até 10/09) - junta com o que vem do Firebase
+          manutPlanilha = res.manutencoes.filter(function (r) { return !r.excluido; });
+          localStorage.setItem(MANUT_CACHE_KEY, JSON.stringify(manutPlanilha));
+          combinarManutencoes_();
         }
         if (res.programacaoAtividades) {
           var localById = {};
@@ -2928,6 +3085,7 @@
     return chain.then(function () {
       syncing = false;
       refreshSyncPill();
+      iniciarFirebaseManut_(); // se o Firebase caiu ou não tinha entrado, tenta de novo
       if (errosSync.length) {
         // mesmo erro repetido a cada ciclo automático vira spam - só avisa
         // se for erro novo ou se o toque foi no "Sincronizar agora"
@@ -3114,11 +3272,17 @@
     } catch (e) {}
     try {
       var cManut = localStorage.getItem(MANUT_CACHE_KEY);
-      if (cManut) manutRecordsCache = JSON.parse(cManut);
+      if (cManut) manutPlanilha = JSON.parse(cManut);
     } catch (e) {}
+    try {
+      var cManutFb = localStorage.getItem(MANUT_FB_CACHE_KEY);
+      if (cManutFb) manutFirebase = JSON.parse(cManutFb);
+    } catch (e) {}
+    combinarManutencoes_();
 
     renderContent();
     refreshSyncPill();
+    iniciarFirebaseManut_();
 
     document.getElementById("btn-open-config").addEventListener("click", abrirConfig);
     document.getElementById("btn-close-config").addEventListener("click", fecharConfig);

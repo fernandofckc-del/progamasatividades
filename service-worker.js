@@ -1,4 +1,4 @@
-var CACHE_NAME = 'prog-atividades-app-v10';
+var CACHE_NAME = 'prog-atividades-app-v11';
 var ASSETS = [
   './',
   './index.html',
@@ -41,6 +41,27 @@ self.addEventListener('fetch', function (event) {
 
   // Nunca cachear chamadas ao backend (Google Apps Script) - sempre tentar rede real
   if (url.indexOf('script.google.com') > -1 || url.indexOf('googleusercontent.com') > -1) {
+    return;
+  }
+  // Firebase (login e banco): passa direto, sem o service worker no meio
+  if (url.indexOf('googleapis.com') > -1 || url.indexOf('firebaseio.com') > -1 || url.indexOf('firebaseapp.com') > -1) {
+    return;
+  }
+  // Bibliotecas do Firebase: guarda no cache na primeira vez, pra o app
+  // abrir até sem internet (aí usa as manutenções guardadas)
+  if (url.indexOf('gstatic.com/firebasejs/') > -1) {
+    event.respondWith(
+      caches.match(event.request).then(function (cached) {
+        if (cached) return cached;
+        return fetch(event.request).then(function (resp) {
+          if (resp && (resp.ok || resp.type === 'opaque')) {
+            var copia = resp.clone();
+            event.waitUntil(caches.open(CACHE_NAME).then(function (cache) { return cache.put(event.request, copia); }));
+          }
+          return resp;
+        });
+      })
+    );
     return;
   }
 
