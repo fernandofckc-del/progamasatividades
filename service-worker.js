@@ -1,4 +1,4 @@
-var CACHE_NAME = 'prog-atividades-app-v11';
+var CACHE_NAME = 'prog-atividades-app-v12';
 var ASSETS = [
   './',
   './index.html',
@@ -47,9 +47,9 @@ self.addEventListener('fetch', function (event) {
   if (url.indexOf('googleapis.com') > -1 || url.indexOf('firebaseio.com') > -1 || url.indexOf('firebaseapp.com') > -1) {
     return;
   }
-  // Bibliotecas do Firebase: guarda no cache na primeira vez, pra o app
-  // abrir até sem internet (aí usa as manutenções guardadas)
-  if (url.indexOf('gstatic.com/firebasejs/') > -1) {
+  // Bibliotecas do Firebase e do leitor de PDF: guarda no cache na primeira
+  // vez, pra funcionar até sem internet
+  if (url.indexOf('gstatic.com/firebasejs/') > -1 || url.indexOf('cdnjs.cloudflare.com/ajax/libs/pdf.js/') > -1) {
     event.respondWith(
       caches.match(event.request).then(function (cached) {
         if (cached) return cached;

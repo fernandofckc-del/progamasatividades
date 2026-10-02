@@ -126,6 +126,14 @@
   .imped-item { border-top:1px solid #EFE2DC; padding:9px 0; cursor:pointer; }
   .imped-item:first-of-type { border-top:none; }
   .imped-badge { display:inline-block; font-size:10px; font-weight:700; border-radius:10px; padding:2px 7px; margin:3px 4px 0 0; }
+
+  /* Programação das outras equipes (PDF) */
+  .prog-chip { display:inline-block; font-size:9.5px; font-weight:700; background:#F0E4C8; color:#6E4B12; border-radius:3px; padding:1px 4px; margin:1px; }
+  .prog-conflito { background:#F7E7C6; color:#6E4B12; border-radius:3px; padding:3px 6px; font-size:10.5px; font-weight:600; margin-top:4px; line-height:1.3; }
+  details.prog-dia { background:#FBF4E4; border:1px solid #E6CF9C; border-radius:6px; padding:8px 10px; margin-bottom:12px; font-size:12px; }
+  details.prog-dia summary { cursor:pointer; font-weight:700; color:#6E4B12; }
+  .prog-linha { padding:5px 0; border-top:1px solid #EFE2C4; }
+  .prog-linha:first-of-type { border-top:none; }
 </style>
 </head>
 <body>
@@ -136,7 +144,7 @@
       <div>
         <div class="plate-label">CONTROLE DE CAMPO</div>
         <div class="plate-title">PROGRAMAÇÃO DE ATIVIDADES</div>
-        <div style="font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:#CFE0BB; margin-top:2px;" id="app-version">v1.3</div>
+        <div style="font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:#CFE0BB; margin-top:2px;" id="app-version">v1.4</div>
       </div>
       <button class="gear-btn" id="btn-open-config">⚙️</button>
     </div>
@@ -346,6 +354,31 @@
   </div>
 </div>
 
+<!-- MODAL: PROGRAMAÇÃO DAS OUTRAS EQUIPES (PDF da Ordem de Serviço) -->
+<div class="modal-overlay" id="modal-prog-overlay">
+  <div class="modal-box">
+    <button class="modal-close" id="btn-close-prog">✕</button>
+    <div class="modal-title">🚜 Programação das outras equipes</div>
+    <div class="modal-sub">Importe o PDF da <b>Ordem de Serviço</b> que as equipes do Coco e do Cacau mandam. O app lê no próprio celular quais serviços cada equipe vai fazer em cada setor e dia.</div>
+    <input id="prog-arquivo" type="file" accept="application/pdf,.pdf" style="display:none;">
+    <button class="photo-btn" id="btn-prog-escolher" style="background:#4C6B2F;">📥 Escolher o PDF</button>
+    <div id="prog-status" class="hint" style="margin-top:8px;font-size:12px;"></div>
+    <div id="prog-preview" style="display:none;margin-top:10px;background:#FFFDF8;border:1px solid #DCD3BC;border-radius:6px;padding:10px 12px;"></div>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6B6153;letter-spacing:.06em;text-transform:uppercase;margin:16px 0 6px;">PDFs guardados</div>
+    <div id="prog-lista"></div>
+  </div>
+</div>
+
+<!-- MODAL: O QUE AS OUTRAS EQUIPES VÃO FAZER NUM DIA -->
+<div class="modal-overlay" id="modal-progdia-overlay">
+  <div class="modal-box">
+    <button class="modal-close" id="btn-close-progdia">✕</button>
+    <div class="modal-title" id="progdia-titulo">—</div>
+    <div class="modal-sub" id="progdia-sub"></div>
+    <div id="progdia-lista"></div>
+  </div>
+</div>
+
 <!-- MODAL DE IMPEDIMENTO POR OUTRA EQUIPE -->
 <div class="modal-overlay" id="modal-imped-overlay">
   <div class="modal-box">
@@ -382,6 +415,7 @@
     <div class="field">
       <span class="field-label">Estava na programação deles?</span>
       <div class="chips" id="imped-programado-chips"></div>
+      <div id="imped-pdf-info" style="display:none;margin-top:6px;border-radius:4px;padding:7px 9px;font-size:11.5px;line-height:1.4;"></div>
     </div>
     <div class="field">
       <span class="field-label">Avisaram antes?</span>
@@ -557,6 +591,15 @@
     "Danificaram o sistema (tivemos que consertar)",
     "Outro motivo"
   ];
+  // Programação das outras equipes: PDF da Ordem de Serviço (Coco, Cacau)
+  // lido no celular. Cada PDF vira { id, cultura, ini, fim, entradas:[{s,i,f,t,c,e,o}] }
+  // (s=serviço, i/f=início/fim, t=setor, c=cultura, e=encarregado, o=observação)
+  var PROG_EXT_KEY = "prog_ativ_prog_externa_v1";
+  var progExternas = [];
+  var progBackendOk = true;
+  var ultimaRespostaProg = "";
+  var progTombstones = {};
+  var PDFJS_BASE = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
   var impedBackendOk = true; // vira false se o Apps Script ainda não tiver o arquivo Impedimentos.gs
   var avisouBackendImped = false;
   var ultimaRespostaImped = "";
@@ -921,7 +964,7 @@
     return out;
   }
   var CAMPOS_IMPED_ = ["data", "setor", "equipe", "motivo", "oQueFaziam", "estavaProgramado", "avisaram", "atividade",
-    "funcionarios", "minutos", "areaOcupadaAte", "remarcadaPara", "observacao", "atividadeIds", "criadoEm"];
+    "funcionarios", "minutos", "areaOcupadaAte", "remarcadaPara", "observacao", "atividadeIds", "criadoEm", "conferenciaPdf"];
   // Servidor é a fonte da verdade pro que já subiu; o que ainda está só no
   // celular (ou foi mexido e não subiu) nunca é sobrescrito nem apagado.
   function mesclarImpedimentosDoServidor_(lista) {
@@ -1072,6 +1115,7 @@
       return;
     }
 
+    html += htmlProgDiaCard_(diaSelecionado);
     html += '<div class="list">';
     var mapaImped = mapaImpedimentos_();
     currentFuncionarios.forEach(function (funcObj) {
@@ -1096,6 +1140,7 @@
             '</div>' +
             (r.areaHa ? '<div class="bloco-obs">🌱 ' + r.areaHa + ' ha</div>' : '') +
             (r.observacao ? '<div class="bloco-obs">📝 ' + escapeHtml(r.observacao) + '</div>' : '') +
+            (im ? '' : htmlConflitoBloco_(r, false)) +
             (im ? '<div class="imped-tag" data-ver-imped="' + im.id + '">⛔ Impedida · ' + escapeHtml(im.equipe) +
                   (im.remarcadaPara ? ' · remarcada p/ ' + fmtDate(im.remarcadaPara).slice(0, 5) : ' · não remarcada') + '</div>' : '') +
             '<div class="bloco-acoes">' +
@@ -1208,6 +1253,12 @@
       '<button class="photo-btn" id="btn-copiar-semana-anterior" style="background:#8A5A44;flex:1;">📋 Copiar semana anterior</button>' +
       '<button class="photo-btn" id="btn-compartilhar-semana" style="background:#2F7DB0;flex:1;">📤 Compartilhar</button>' +
     '</div>';
+    // PDFs da programação das outras equipes que cobrem esta semana
+    var pdfsSemana = progAtivas_().filter(function (p) { return p.ini <= dias[4] && p.fim >= dias[0]; }).map(rotuloProg_);
+    html += '<button class="photo-btn" id="btn-prog-equipes" style="background:#8A6A2E;margin-bottom:4px;">🚜 Programação das outras equipes (PDF)</button>' +
+      '<div class="hint" style="margin-bottom:10px;">' + (pdfsSemana.length
+        ? 'PDFs desta semana: <b>' + escapeHtml(pdfsSemana.join(", ")) + '</b>'
+        : 'Nenhum PDF das outras equipes pra esta semana ainda.') + '</div>';
     html += '<div style="font-size:11px;color:#8A8072;margin-bottom:8px;">Toque numa célula vazia pra lançar direto. Toque numa preenchida pra editar.</div>';
 
     html += '<div id="semana-scroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">';
@@ -1220,6 +1271,25 @@
         fmtDate(d).slice(0, 5) + '<br><span style="font-size:11px;color:#4A4136;font-weight:700;">' + NOMES_DIA_SEMANA[dt.getDay()] + '</span></th>';
     });
     html += '</tr>';
+
+    // Linha "Outras equipes": setores com serviço programado deles em cada dia
+    if (pdfsSemana.length) {
+      html += '<tr><td class="sem-func" style="font-size:11px;font-weight:700;padding:6px;vertical-align:middle;background:#FBF4E4;border:1px solid #E6CF9C;border-radius:4px;color:#6E4B12;">🚜 Outras equipes</td>';
+      dias.forEach(function (d) {
+        var nOcup = Object.keys(progDoDia_(d)).length;
+        var livresDia = setoresLivresDia_(d);
+        var cobre = progCobrindo_(d, "").length > 0;
+        html += '<td style="padding:0;min-width:118px;vertical-align:top;">' +
+          '<div data-prog-dia="' + d + '" style="background:#FBF4E4;border:1px solid #E6CF9C;border-radius:5px;padding:5px 6px;min-height:30px;cursor:pointer;font-size:10.5px;line-height:1.45;">' +
+          (cobre
+            ? '<div style="font-weight:700;color:#6E4B12;">🚜 ' + nOcup + ' com eles</div>' +
+              (currentTalhoes.length ? '<div style="font-weight:700;color:#28603C;">✅ ' + livresDia.length + ' livre' + (livresDia.length === 1 ? '' : 's') + '</div>' : '') +
+              '<div style="color:#A89A7A;font-size:9.5px;">toque pra ver</div>'
+            : '<span style="color:#A89A7A;">sem PDF</span>') +
+          '</div></td>';
+      });
+      html += '</tr>';
+    }
 
     var atividadesUsadas = {};
     var mapaImpedSem = mapaImpedimentos_();
@@ -1250,6 +1320,7 @@
                 (r.setor ? '<div style="font-weight:600;color:#4A4136;">' + escapeHtml(r.setor) + '</div>' : '') +
                 '<div style="color:#5C5445;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;">' + escapeHtml(r.horarioInicio) + '–' + escapeHtml(r.horarioFim) + '</div>' +
               '</div>' +
+              (im ? '' : htmlConflitoBloco_(r, true)) +
               (im ? '<div data-ver-imped="' + im.id + '" style="margin-top:3px;background:#B4442E;color:#fff;border-radius:3px;padding:2px 4px;font-weight:700;font-size:9.5px;cursor:pointer;line-height:1.25;">⛔ ' + escapeHtml(im.equipe) +
                     (im.remarcadaPara ? ' → ' + fmtDate(im.remarcadaPara).slice(0, 5) : '') + '</div>' : '') +
               '<div style="display:flex;gap:4px;justify-content:flex-end;margin-top:3px;border-top:1px solid rgba(0,0,0,.08);padding-top:3px;">' +
@@ -1298,6 +1369,10 @@
     wireNavData_(7);
     document.getElementById("btn-copiar-semana-anterior").addEventListener("click", function () { copiarSemanaAnterior(segunda); });
     document.getElementById("btn-compartilhar-semana").addEventListener("click", function () { compartilharSemana(segunda, dias); });
+    document.getElementById("btn-prog-equipes").addEventListener("click", abrirModalProg_);
+    el.querySelectorAll("[data-prog-dia]").forEach(function (b) {
+      b.addEventListener("click", function () { abrirProgDia_(b.getAttribute("data-prog-dia")); });
+    });
     wireSemanaPicker();
     // toque em célula vazia -> já abre o modal com funcionário e dia prontos
     el.querySelectorAll("[data-nova-cel]").forEach(function (b) {
@@ -1641,6 +1716,7 @@
         '</div>' +
         '<div style="font-size:11.5px;color:#4A4136;margin-top:2px;">' + escapeHtml(im.motivo) + (im.oQueFaziam ? ' (' + escapeHtml(im.oQueFaziam) + ')' : '') + '</div>' +
         '<div style="font-size:11px;color:#6B6153;margin-top:2px;">' + escapeHtml(im.atividade || "—") + ' · ' + escapeHtml((im.funcionarios || []).join(", ")) + '</div>' +
+        (im.conferenciaPdf ? '<div style="font-size:10.5px;color:#6E4B12;margin-top:3px;">' + escapeHtml(im.conferenciaPdf) + '</div>' : '') +
         '<div>' + badgesImpedimento_(im) + '</div>' +
       '</div>';
     });
@@ -1680,6 +1756,7 @@
       if (im.avisaram === "Não") flags.push("não avisaram");
       else if (im.avisaram === "Sim") flags.push("avisaram antes");
       if (flags.length) L.push("   " + flags.join(" · "));
+      if (im.conferenciaPdf) L.push("   " + im.conferenciaPdf);
       if (im.areaOcupadaAte) L.push("   Área ocupada até " + fmtDate(im.areaOcupadaAte).slice(0, 5));
       L.push("   " + (im.remarcadaPara ? "↪ Remarcada p/ " + fmtDate(im.remarcadaPara).slice(0, 5) : "Ainda não remarcada"));
       if (im.observacao) L.push("   Obs.: " + im.observacao);
@@ -1911,6 +1988,15 @@
     if (avisos.length) {
       html += '<div style="color:#B4442E;font-weight:700;margin-top:3px;">⛔ ' + escapeHtml(avisos.join("; ")) + '</div>';
     }
+    // O que as outras equipes programaram (PDF) nesse setor e dia
+    var dataHint = document.getElementById("ativ-data").value, progLinhas = [];
+    nomes.forEach(function (s) {
+      var l = progNoSetorDia_(s, dataHint);
+      if (l.length) progLinhas.push(s + ": " + resumoServicos_(l, 3));
+    });
+    if (progLinhas.length) {
+      html += '<div style="color:#6E4B12;font-weight:600;margin-top:3px;">🚜 Outra equipe programada nesse dia — ' + escapeHtml(progLinhas.join("; ")) + '</div>';
+    }
     el.innerHTML = html;
   }
   function setoresOcupadosNoDia_(nomesSetores, dataISO) {
@@ -1953,10 +2039,12 @@
           : (info.status === "atrasado") ? "atrasado " + info.diasAtraso + "d"
           : (info.status === "proximo") ? "próx. do prazo" : "em dia";
         var ocup = ocupacaoDoSetor_(t.nome, dataDoModal);
+        var progS = progNoSetorDia_(t.nome, dataDoModal);
         html += '<label class="checkbox-row" style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;border-bottom:1px solid #EFEAD9;">' +
           '<span><input type="checkbox" value="' + escapeHtml(t.nome) + '" ' + (marcado ? "checked" : "") + ' style="margin-right:8px;"> <b>' + escapeHtml(t.nome) + '</b></span>' +
           '<span style="font-size:10.5px;font-weight:700;color:' + cor + ';text-align:right;">' + badge +
             (ocup ? '<br><span style="color:#B4442E;">⛔ ' + escapeHtml(ocup.equipe) + ' até ' + fmtDate(ocup.areaOcupadaAte).slice(0, 5) + '</span>' : '') +
+            (progS.length ? '<br><span style="color:#6E4B12;">🚜 ' + escapeHtml(resumoServicos_(progS, 1)) + '</span>' : '') +
           '</span>' +
         '</label>';
       });
@@ -1992,15 +2080,21 @@
       showToast(pulados ? "Os setores atrasados estão ocupados por outra equipe nesse dia." : "Nenhum setor atrasado no momento 🎉");
       return;
     }
+    // Primeiro os setores SEM outra equipe programada nesse dia (PDF), depois
+    // os mais atrasados. Setor com outra equipe ainda pode entrar, se faltar.
     comStatus.sort(function (a, b) {
+      var ca = progNoSetorDia_(a.talhao.nome, dataAtiv).length ? 1 : 0, cb = progNoSetorDia_(b.talhao.nome, dataAtiv).length ? 1 : 0;
+      if (ca !== cb) return ca - cb;
       var da = a.info.diasAtraso || 999, db = b.info.diasAtraso || 999; // "nunca" conta como muito atrasado
       return db - da;
     });
     var escolhidos = comStatus.slice(0, 4).map(function (item) { return item.talhao.nome; });
+    var comOutraEquipe = escolhidos.filter(function (n) { return progNoSetorDia_(n, dataAtiv).length; }).length;
     document.getElementById("ativ-setor").value = escolhidos.join(", ");
     atualizarHintSetor_();
     showToast("Sugeridos os " + escolhidos.length + " setores mais atrasados." +
       (pulados ? " Pulei " + pulados + " ocupado(s) por outra equipe." : "") +
+      (comOutraEquipe ? " 🚜 " + comOutraEquipe + " com outra equipe programada nesse dia." : (progCobrindo_(dataAtiv, "").length ? " Dei prioridade pros setores sem outra equipe no dia." : "")) +
       (!manutFbStatus.ok && !(manutFirebase && manutFirebase.length) ? " ⚠ Sem o Firebase: pode ter setor que já foi feito." : ""));
   }
 
@@ -2461,6 +2555,375 @@
     trySync();
   }
 
+  // ================= PROGRAMAÇÃO DAS OUTRAS EQUIPES (PDF) =================
+  function loadProgExternas_() {
+    try { progExternas = JSON.parse(localStorage.getItem(PROG_EXT_KEY) || "[]") || []; } catch (e) { progExternas = []; }
+  }
+  function saveProgExternas_() {
+    try { localStorage.setItem(PROG_EXT_KEY, JSON.stringify(progExternas)); return true; }
+    catch (e) { showToast("Armazenamento cheio."); return false; }
+  }
+  function progAtivas_() { return progExternas.filter(function (p) { return !p._pendingDelete; }); }
+  // Cada PDF é a programação de um supervisor (ex.: CACAU · Sabrina e CACAU · Lucca na mesma semana)
+  function rotuloProg_(p) {
+    var nome = String(p.supervisor || "").trim().split(/\s+/)[0] || "";
+    nome = nome ? nome.charAt(0).toUpperCase() + nome.slice(1).toLowerCase() : "";
+    return (p.cultura || "—") + (nome ? " · " + nome : "");
+  }
+  function mesmaEquipeProg_(a, b) {
+    return String(a.cultura || "").toUpperCase() === String(b.cultura || "").toUpperCase() &&
+      String(a.supervisor || "").toUpperCase() === String(b.supervisor || "").toUpperCase();
+  }
+  function nomeServicoCurto_(s) {
+    s = String(s || "").trim();
+    if (!s) return "";
+    var t = s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+    return t.replace(/\bnpk\b/g, "NPK");
+  }
+  // Serviços das outras equipes num setor e dia
+  function progNoSetorDia_(setor, dataISO) {
+    if (!setor || !dataISO) return [];
+    var alvo = normSetor_(setor), out = [];
+    progAtivas_().forEach(function (p) {
+      if (dataISO < p.ini || dataISO > p.fim) return;
+      (p.entradas || []).forEach(function (e) {
+        if (normSetor_(e.t) === alvo && dataISO >= e.i && dataISO <= e.f) out.push(e);
+      });
+    });
+    return out;
+  }
+  // { setor: [serviços] } de um dia inteiro
+  function progDoDia_(dataISO) {
+    var mapa = {};
+    progAtivas_().forEach(function (p) {
+      if (dataISO < p.ini || dataISO > p.fim) return;
+      (p.entradas || []).forEach(function (e) {
+        if (dataISO < e.i || dataISO > e.f) return;
+        (mapa[e.t] = mapa[e.t] || []).push(e);
+      });
+    });
+    return mapa;
+  }
+  function culturaDoSetor_(setor) {
+    var alvo = normSetor_(setor);
+    var t = currentTalhoes.find(function (x) { return normSetor_(x.nome) === alvo; });
+    return t && t.cultura ? String(t.cultura).toUpperCase() : "";
+  }
+  // PDFs que cobrem esse dia (da mesma cultura do setor, quando dá pra saber)
+  function progCobrindo_(dataISO, cultura) {
+    return progAtivas_().filter(function (p) {
+      return dataISO >= p.ini && dataISO <= p.fim && (!cultura || String(p.cultura).toUpperCase() === cultura);
+    });
+  }
+  // Talhões livres num dia: a cultura dele tem PDF cobrindo o dia e não tem
+  // nada programado deles. (Cultura sem PDF não conta como livre.)
+  function setoresLivresDia_(dataISO) {
+    var ocupados = {};
+    Object.keys(progDoDia_(dataISO)).forEach(function (s) { ocupados[normSetor_(s)] = true; });
+    return currentTalhoes.filter(function (t) {
+      return !ocupados[normSetor_(t.nome)] && progCobrindo_(dataISO, String(t.cultura || "").toUpperCase()).length > 0;
+    }).map(function (t) { return t.nome; }).sort();
+  }
+  function resumoServicos_(lista, max) {
+    var nomes = [];
+    lista.forEach(function (e) { var n = nomeServicoCurto_(e.s); if (nomes.indexOf(n) === -1) nomes.push(n); });
+    max = max || 2;
+    return nomes.slice(0, max).join(", ") + (nomes.length > max ? " +" + (nomes.length - max) : "");
+  }
+  // Outras equipes nos setores de uma atividade nossa (pra marcar conflito)
+  function conflitoProgBloco_(r) {
+    var achou = [];
+    splitSetores_(r.setor).forEach(function (s) {
+      var l = progNoSetorDia_(s, r.data);
+      if (l.length) achou.push({ setor: s, lista: l });
+    });
+    return achou;
+  }
+  function htmlConflitoBloco_(r, curto) {
+    var c = conflitoProgBloco_(r);
+    if (!c.length) return "";
+    var txt = c.map(function (x) {
+      var r = resumoServicos_(x.lista, curto ? 1 : 2);
+      if (curto && r.length > 24) r = r.slice(0, 22).replace(/\s+\S*$/, "") + "…" + (r.match(/ \+\d+$/) || [""])[0];
+      return (c.length > 1 ? x.setor + ": " : "") + r;
+    }).join(" · ");
+    return '<div class="prog-conflito">🚜 ' + (curto ? "" : "Outra equipe aqui: ") + escapeHtml(txt) + '</div>';
+  }
+
+  // ---- Leitura do PDF ("Relatório de Ordem de Serviço P/Serviço", sistema NNTI) ----
+  // Recebe os pedaços de texto de cada página (com a posição) e monta as
+  // linhas: Data | Início | Fim | Supervisor | Encarregado | CULTURA / SETOR | Observação
+  function lerRelatorioOS_(paginas) {
+    var RE_DATA = /^\d{2}\/\d{2}\/\d{4}$/;
+    var out = { semanaIni: "", semanaFim: "", supervisor: "", entradas: [], totaisInformados: 0, culturas: {} };
+    function iso(br) { var p = br.split("/"); return p[2] + "-" + p[1] + "-" + p[0]; }
+    var servicoAtual = "";
+    paginas.forEach(function (itens) {
+      var linhas = [];
+      itens.forEach(function (it) {
+        var s = String(it.str || "").trim();
+        if (!s) return;
+        var x = it.transform[4], y = it.transform[5], linha = null;
+        for (var i = 0; i < linhas.length; i++) { if (Math.abs(linhas[i].y - y) <= 2.5) { linha = linhas[i]; break; } }
+        if (!linha) { linha = { y: y, cel: [] }; linhas.push(linha); }
+        linha.cel.push({ x: x, s: s });
+      });
+      linhas.sort(function (a, b) { return b.y - a.y; });
+      linhas.forEach(function (l) {
+        l.cel.sort(function (a, b) { return a.x - b.x; });
+        var cel = l.cel.map(function (c) { return c.s; });
+        var texto = cel.join(" "), m;
+        if ((m = texto.match(/Boletim\s+(\d{2}\/\d{2}\/\d{4})\s+at[ée]\s+(\d{2}\/\d{2}\/\d{4})/i))) {
+          out.semanaIni = iso(m[1]); out.semanaFim = iso(m[2]);
+          // "Supervisor.: LUCCA GOMES DIAS Setor.: CACAU" -> só o nome
+          var ms = texto.match(/Supervisor\.*:\s*(.+?)(?:\s+Setor\.*:.*)?$/i);
+          if (ms) out.supervisor = ms[1].trim().toUpperCase();
+          return;
+        }
+        if ((m = texto.match(/Servi[çc]o\s*\.*\s*:\s*(.+)$/i))) { servicoAtual = m[1].trim(); return; }
+        if ((m = texto.match(/Qtde\s+Total\s+de\s+Registros\.*:\s*(\d+)/i))) { out.totaisInformados += parseInt(m[1], 10); return; }
+        if (cel.length < 4 || !RE_DATA.test(cel[0]) || !RE_DATA.test(cel[1]) || !RE_DATA.test(cel[2])) return;
+        var resto = cel.slice(3), iSetor = -1;
+        for (var k = 0; k < resto.length; k++) { if (/^[^\/]{2,40}\/\s*\S/.test(resto[k]) && !RE_DATA.test(resto[k])) { iSetor = k; break; } }
+        if (iSetor === -1) return;
+        var pessoas = resto.slice(0, iSetor);
+        var partes = resto[iSetor].split("/");
+        var cultura = partes[0].trim().toUpperCase();
+        var setor = partes.slice(1).join("/").trim().toUpperCase();
+        var encarregado = pessoas.length > 1 ? pessoas[pessoas.length - 1] : (pessoas[0] && pessoas[0] !== out.supervisor ? pessoas[0] : "");
+        out.entradas.push({
+          s: servicoAtual, i: iso(cel[1]), f: iso(cel[2]), t: setor, c: cultura,
+          e: encarregado, o: resto.slice(iSetor + 1).join(" ").slice(0, 100)
+        });
+        out.culturas[cultura] = (out.culturas[cultura] || 0) + 1;
+      });
+    });
+    var principal = "", max = 0;
+    Object.keys(out.culturas).forEach(function (c) {
+      if (/GERAL|ADM/.test(c)) return;
+      if (out.culturas[c] > max) { max = out.culturas[c]; principal = c; }
+    });
+    out.cultura = principal || Object.keys(out.culturas)[0] || "";
+    // sem o cabeçalho "Data Boletim": usa o primeiro e o último dia dos serviços
+    if (!out.semanaIni && out.entradas.length) {
+      out.semanaIni = out.entradas.reduce(function (a, e) { return e.i < a ? e.i : a; }, out.entradas[0].i);
+      out.semanaFim = out.entradas.reduce(function (a, e) { return e.f > a ? e.f : a; }, out.entradas[0].f);
+    }
+    return out;
+  }
+  // Biblioteca de leitura de PDF (pdf.js) só é baixada quando precisa
+  function carregarPdfJs_() {
+    return new Promise(function (resolve, reject) {
+      if (window.pdfjsLib) { resolve(window.pdfjsLib); return; }
+      var s = document.createElement("script");
+      s.src = PDFJS_BASE + "pdf.min.js";
+      s.onload = function () {
+        if (!window.pdfjsLib) { reject(new Error("o leitor de PDF não carregou")); return; }
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + "pdf.worker.min.js";
+        resolve(window.pdfjsLib);
+      };
+      s.onerror = function () { reject(new Error("precisa de internet na primeira vez pra baixar o leitor de PDF")); };
+      document.head.appendChild(s);
+    });
+  }
+  function lerArquivoPdf_(file) {
+    return carregarPdfJs_().then(function (lib) {
+      return file.arrayBuffer().then(function (buf) { return lib.getDocument({ data: new Uint8Array(buf) }).promise; });
+    }).then(function (doc) {
+      var ps = [];
+      for (var n = 1; n <= doc.numPages; n++) {
+        ps.push(doc.getPage(n).then(function (pg) { return pg.getTextContent(); }).then(function (tc) { return tc.items; }));
+      }
+      return Promise.all(ps);
+    }).then(lerRelatorioOS_);
+  }
+
+  // Planilha é a fonte da verdade do que já subiu; o que só está aqui não se perde
+  function mesclarProgDoServidor_(lista) {
+    var doServidor = {}, local = {};
+    lista.forEach(function (p) { if (p && p.id) doServidor[p.id] = p; });
+    progExternas.forEach(function (p) { local[p.id] = p; });
+    Object.keys(doServidor).forEach(function (id) {
+      var s = doServidor[id], l = local[id];
+      var campos = { cultura: s.cultura, supervisor: s.supervisor || "", ini: s.ini, fim: s.fim, arquivo: s.arquivo || "",
+        importadoEm: s.importadoEm || "", entradas: Array.isArray(s.entradas) ? s.entradas : [] };
+      if (l) {
+        if (l._synced && !l._pendingDelete) Object.assign(l, campos);
+      } else if (!progTombstones[id]) {
+        progExternas.push(Object.assign({ id: id, _synced: true }, campos));
+      }
+    });
+    // substituído/excluído em outro aparelho (ou ficou velho): sai daqui também
+    progExternas = progExternas.filter(function (p) { return !p._synced || p._pendingDelete || doServidor[p.id]; });
+    saveProgExternas_();
+  }
+
+  // ---- Janela de importar / ver os PDFs ----
+  var progPreview = null;
+  function abrirModalProg_() {
+    progPreview = null;
+    document.getElementById("prog-status").textContent = "";
+    document.getElementById("prog-preview").style.display = "none";
+    document.getElementById("prog-arquivo").value = "";
+    renderListaProg_();
+    document.getElementById("modal-prog-overlay").classList.add("active");
+  }
+  function fecharModalProg_() { document.getElementById("modal-prog-overlay").classList.remove("active"); progPreview = null; }
+  function renderListaProg_() {
+    var el = document.getElementById("prog-lista");
+    var lista = progAtivas_().slice().sort(function (a, b) { return a.ini < b.ini ? 1 : -1; });
+    if (!lista.length) { el.innerHTML = '<div class="hint">Nenhum PDF ainda.</div>'; return; }
+    el.innerHTML = lista.map(function (p) {
+      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #EFEAD9;">' +
+        '<div><div style="font-size:13px;font-weight:700;">' + escapeHtml(rotuloProg_(p)) + ' · ' + fmtDate(p.ini).slice(0, 5) + ' a ' + fmtDate(p.fim).slice(0, 5) + '</div>' +
+        '<div class="hint" style="margin-top:1px;">' + (p.entradas || []).length + ' serviços' + (p.arquivo ? ' · ' + escapeHtml(p.arquivo) : '') +
+          (!p._synced ? ' · <b>só no celular</b>' : '') + '</div></div>' +
+        '<button class="del-btn" data-del-prog="' + escapeHtml(p.id) + '" title="Excluir">🗑</button>' +
+      '</div>';
+    }).join("");
+    el.querySelectorAll("[data-del-prog]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var id = b.getAttribute("data-del-prog");
+        if (b.getAttribute("data-confirmar") !== "1") { b.setAttribute("data-confirmar", "1"); b.textContent = "Excluir?"; b.style.fontSize = "12px"; b.style.color = "#B4442E"; return; }
+        removerProgLocal_(id);
+        saveProgExternas_();
+        renderListaProg_();
+        renderContent();
+        trySync();
+      });
+    });
+  }
+  function removerProgLocal_(id) {
+    progExternas = progExternas.filter(function (p) {
+      if (p.id !== id) return true;
+      if (p._synced) { p._pendingDelete = true; return true; } // apaga na planilha na próxima sincronização
+      return false;
+    });
+    progTombstones[id] = true;
+  }
+  function importarPdfProg_(file) {
+    var status = document.getElementById("prog-status");
+    var prev = document.getElementById("prog-preview");
+    prev.style.display = "none";
+    progPreview = null;
+    status.textContent = "Lendo o PDF...";
+    lerArquivoPdf_(file).then(function (r) {
+      if (!r.entradas.length) throw new Error("não achei nenhum serviço nesse PDF. Ele é o Relatório de Ordem de Serviço?");
+      progPreview = {
+        id: r.cultura + "|" + r.supervisor + "|" + r.semanaIni + "|" + r.semanaFim, cultura: r.cultura, supervisor: r.supervisor,
+        ini: r.semanaIni, fim: r.semanaFim, arquivo: file.name || "", entradas: r.entradas, totaisInformados: r.totaisInformados
+      };
+      status.textContent = "";
+      var porDia = {};
+      r.entradas.forEach(function (e) {
+        for (var d = e.i; d <= e.f; d = addDiasISO(d, 1)) { (porDia[d] = porDia[d] || {})[e.t] = true; if (d >= "9999") break; }
+      });
+      var conferido = r.totaisInformados
+        ? (r.totaisInformados === r.entradas.length ? ' <span style="color:#28603C;">✓ o PDF informa ' + r.totaisInformados + '</span>'
+                                                     : ' <span style="color:#B4442E;">⚠ o PDF informa ' + r.totaisInformados + '</span>')
+        : '';
+      var html = '<div style="font-size:14px;font-weight:700;">' + escapeHtml(rotuloProg_(progPreview)) + ' · ' + fmtDate(r.semanaIni).slice(0, 5) + ' a ' + fmtDate(r.semanaFim).slice(0, 5) + '</div>' +
+        '<div style="font-size:12px;margin:3px 0 8px;">Li <b>' + r.entradas.length + ' serviços</b>.' + conferido + '</div>';
+      Object.keys(porDia).sort().forEach(function (d) {
+        var dt = new Date(d + "T00:00:00");
+        html += '<div style="font-size:11.5px;margin-bottom:3px;"><b>' + NOMES_DIA_SEMANA[dt.getDay()] + ' ' + fmtDate(d).slice(0, 5) + ':</b> ' +
+          escapeHtml(Object.keys(porDia[d]).sort().join(", ")) + '</div>';
+      });
+      var substitui = progAtivas_().filter(function (p) {
+        return p.id !== progPreview.id && mesmaEquipeProg_(p, progPreview) && p.ini <= r.semanaFim && p.fim >= r.semanaIni;
+      });
+      if (substitui.length) {
+        html += '<div class="hint" style="margin-top:6px;color:#8A5A2E;">Vai substituir o PDF anterior do ' + escapeHtml(rotuloProg_(progPreview)) + ' (' +
+          substitui.map(function (p) { return fmtDate(p.ini).slice(0, 5) + '–' + fmtDate(p.fim).slice(0, 5); }).join(", ") + ').</div>';
+      }
+      html += '<button class="save-btn" id="btn-prog-salvar" style="margin-top:10px;">✅ Salvar esta programação</button>';
+      prev.innerHTML = html;
+      prev.style.display = "";
+      document.getElementById("btn-prog-salvar").addEventListener("click", salvarProgPreview_);
+    }).catch(function (err) {
+      status.innerHTML = '<span style="color:#B4442E;font-weight:700;">⚠ Não consegui ler: ' + escapeHtml(err && err.message ? err.message : String(err)) + '</span>';
+    });
+  }
+  function salvarProgPreview_() {
+    var p = progPreview;
+    if (!p) return;
+    // PDF mais novo da mesma equipe substitui o que cobria os mesmos dias
+    progAtivas_().forEach(function (x) {
+      if (x.id !== p.id && mesmaEquipeProg_(x, p) && x.ini <= p.fim && x.fim >= p.ini) removerProgLocal_(x.id);
+    });
+    progExternas = progExternas.filter(function (x) { return x.id !== p.id; });
+    delete progTombstones[p.id];
+    progExternas.push({
+      id: p.id, cultura: p.cultura, supervisor: p.supervisor, ini: p.ini, fim: p.fim, arquivo: p.arquivo, entradas: p.entradas,
+      importadoEm: new Date().toISOString(), _synced: false
+    });
+    saveProgExternas_();
+    showToast("Programação " + rotuloProg_(p) + " salva (" + p.entradas.length + " serviços).");
+    fecharModalProg_();
+    renderContent();
+    trySync();
+  }
+  // ---- Detalhe de um dia (toque na linha "Outras equipes" da semana) ----
+  function abrirProgDia_(dataISO) {
+    var mapa = progDoDia_(dataISO);
+    var dt = new Date(dataISO + "T00:00:00");
+    document.getElementById("progdia-titulo").textContent = "🚜 Outras equipes · " + NOMES_DIA_LONGO[dt.getDay()] + " " + fmtDate(dataISO).slice(0, 5);
+    var setores = Object.keys(mapa).sort();
+    var cob = progAtivas_().filter(function (p) { return dataISO >= p.ini && dataISO <= p.fim; }).map(rotuloProg_);
+    document.getElementById("progdia-sub").textContent = cob.length
+      ? "Pelos PDFs: " + cob.join(", ") + ". " + setores.length + " setor(es) com serviço programado."
+      : "Nenhum PDF das outras equipes cobre esse dia.";
+    var livres = setoresLivresDia_(dataISO);
+    document.getElementById("progdia-lista").innerHTML = (cob.length && currentTalhoes.length
+      ? '<div style="background:#E7F2DF;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:12px;"><b style="color:#28603C;">✅ Livres (nada deles):</b> ' +
+          (livres.length ? escapeHtml(livres.join(", ")) : 'nenhum') + '</div>'
+      : '') + setores.map(function (s) {
+      return '<div class="prog-linha"><div style="font-size:13px;font-weight:700;">' + escapeHtml(s) + '</div>' +
+        mapa[s].map(function (e) {
+          return '<div style="font-size:12px;color:#4A4136;">• ' + escapeHtml(nomeServicoCurto_(e.s)) +
+            (e.e ? ' <span style="color:#8A8072;">— ' + escapeHtml(e.e) + '</span>' : '') + '</div>';
+        }).join("") + '</div>';
+    }).join("");
+    document.getElementById("modal-progdia-overlay").classList.add("active");
+  }
+  function htmlProgDiaCard_(dataISO) {
+    var mapa = progDoDia_(dataISO);
+    var setores = Object.keys(mapa).sort();
+    if (!setores.length) return "";
+    var livres = setoresLivresDia_(dataISO);
+    return '<details class="prog-dia"><summary>🚜 Outras equipes neste dia: ' + setores.length + ' setor(es)' +
+      (currentTalhoes.length ? ' · ✅ ' + livres.length + ' livre' + (livres.length === 1 ? '' : 's') : '') + '</summary><div style="margin-top:6px;">' +
+      (currentTalhoes.length ? '<div class="prog-linha" style="color:#28603C;"><b>Livres:</b> ' + (livres.length ? escapeHtml(livres.join(", ")) : 'nenhum') + '</div>' : '') +
+      setores.map(function (s) {
+        return '<div class="prog-linha"><b>' + escapeHtml(s) + '</b> — ' + escapeHtml(resumoServicos_(mapa[s], 3)) + '</div>';
+      }).join("") + '</div></details>';
+  }
+  // Conferência do impedimento contra o PDF da programação deles
+  function conferenciaPdf_(setorTxt, dataISO) {
+    var setores = splitSetores_(setorTxt);
+    if (!setores.length || !dataISO) return null;
+    var achados = [], livres = [], semPdf = [];
+    setores.forEach(function (s) {
+      var lista = progNoSetorDia_(s, dataISO);
+      if (lista.length) { achados.push({ setor: s, lista: lista }); return; }
+      var cob = progCobrindo_(dataISO, culturaDoSetor_(s));
+      if (cob.length) livres.push({ setor: s, progs: cob }); else semPdf.push(s);
+    });
+    var dia = fmtDate(dataISO).slice(0, 5);
+    if (achados.length) {
+      return { resposta: "Sim", cor: "#4A4136", fundo: "#EEE7D5",
+        texto: "📄 No PDF deles: " + achados.map(function (a) { return a.setor + " tinha " + resumoServicos_(a.lista, 3); }).join("; ") + " em " + dia + "." };
+    }
+    if (livres.length) {
+      var progs = livres[0].progs;
+      return { resposta: "Não", cor: "#8A2E2E", fundo: "#F5DADA",
+        texto: "📄 Conferido no" + (progs.length > 1 ? "s PDFs" : " PDF") + " " + progs.map(function (p) {
+            return rotuloProg_(p) + " (" + fmtDate(p.ini).slice(0, 5) + "–" + fmtDate(p.fim).slice(0, 5) + ")";
+          }).join(" e ") + ": " + livres.map(function (l) { return l.setor; }).join(", ") + " sem nada programado deles em " + dia + "." };
+    }
+    return { resposta: "", cor: "#6B6153", fundo: "#EEE7D5", texto: "Sem PDF da programação das outras equipes pra esse dia - responda pelo que você sabe." };
+  }
+
   // ================= MODAL: IMPEDIMENTO POR OUTRA EQUIPE =================
   var impedEditId = null;          // registro existente aberto (ou null = novo)
   var impedGrupo = [];             // blocos da turma, quando veio de uma atividade da grade
@@ -2535,6 +2998,29 @@
     var ocup = setoresOcupadosNoDia_(splitSetores_(setor), dataNova);
     hint.innerHTML = "Vai lançar a atividade de novo em <b>" + fmtDate(dataNova) + "</b> pra quem ficou parado (no fim da fila do dia)." +
       (ocup.length ? '<br><span style="color:#B4442E;font-weight:700;">⚠ ' + escapeHtml(ocup.join("; ")) + '</span>' : '');
+  }
+
+  // Confere o setor/dia do impedimento nos PDFs da programação deles.
+  // aplicar=true (registro novo): já marca o "Estava na programação deles?".
+  function setorDataImped_() {
+    if (impedGrupo.length) return { setor: impedGrupo[0].setor || "", data: impedGrupo[0].data };
+    return { setor: document.getElementById("imped-setor").value, data: document.getElementById("imped-data").value };
+  }
+  function atualizarConferenciaPdfImped_(aplicar) {
+    var box = document.getElementById("imped-pdf-info");
+    var existente = impedEditId ? impedimentos.find(function (i) { return i.id === impedEditId; }) : null;
+    var sd = setorDataImped_();
+    var conf = progAtivas_().length ? conferenciaPdf_(sd.setor, sd.data) : null;
+    var texto = conf ? conf.texto : "";
+    if (existente && existente.conferenciaPdf && !aplicar) texto = existente.conferenciaPdf;
+    if (!texto) { box.style.display = "none"; return; }
+    box.style.display = "";
+    box.style.background = conf && !(existente && existente.conferenciaPdf && !aplicar) ? conf.fundo : "#EEE7D5";
+    box.style.color = conf && !(existente && existente.conferenciaPdf && !aplicar) ? conf.cor : "#4A4136";
+    box.textContent = texto;
+    if (aplicar && conf && conf.resposta) {
+      renderChips_("imped-programado-chips", ["Não", "Sim", "Não sei"], conf.resposta);
+    }
   }
 
   function abrirModalImpedimento(blocoId, impedId) {
@@ -2612,6 +3098,7 @@
     document.getElementById("imped-oque").value = existente ? (existente.oQueFaziam || "") : "";
     renderChips_("imped-programado-chips", ["Não", "Sim", "Não sei"], existente ? existente.estavaProgramado : "Não");
     renderChips_("imped-avisaram-chips", ["Não", "Sim"], existente ? existente.avisaram : "Não");
+    atualizarConferenciaPdfImped_(!existente);
     document.getElementById("imped-minutos").value = existente ? minToTime(existente.minutos || 0) : minToTime(bloco ? bloco.duracaoMin : 60);
     document.getElementById("imped-ocupada-ate").value = existente ? (existente.areaOcupadaAte || "") : "";
     document.getElementById("imped-obs").value = existente ? (existente.observacao || "") : "";
@@ -2685,6 +3172,8 @@
       areaOcupadaAte: ocupadaAte, observacao: document.getElementById("imped-obs").value.trim(),
       atividadeIds: ids
     };
+    var confSalvar = progAtivas_().length ? conferenciaPdf_(setor, data) : null;
+    campos.conferenciaPdf = (confSalvar && confSalvar.resposta) ? confSalvar.texto : (existente ? (existente.conferenciaPdf || "") : "");
     var im;
     if (existente) {
       im = Object.assign(existente, campos);
@@ -2816,18 +3305,22 @@
     if (!config.url || !config.token) { dot.style.background = "#8A8072"; txt.textContent = "Configure a sincronização"; return; }
     if (!navigator.onLine) { dot.style.background = "#B4442E"; txt.textContent = "Offline"; return; }
     if (syncing) { dot.style.background = "#2F7DB0"; txt.textContent = "Sincronizando..."; return; }
-    var pendImped = contarPendentesLista_(impedimentos);
-    var pend = contarPendentes_() - (impedBackendOk ? 0 : pendImped);
+    // impedimentos/PDFs que não sobem porque o Apps Script ainda não tem o arquivo novo
+    var presos = (impedBackendOk ? 0 : contarPendentesLista_(impedimentos)) + (progBackendOk ? 0 : contarPendentesProg_());
+    var pend = contarPendentes_() - presos;
     if (pend) { dot.style.background = "#D6A233"; txt.textContent = pend + " alteração(ões) aguardando envio"; return; }
-    if (!impedBackendOk && pendImped) { dot.style.background = "#D6A233"; txt.textContent = "⛔ " + pendImped + " impedimento(s) só no celular"; return; }
+    if (presos) { dot.style.background = "#D6A233"; txt.textContent = "⛔ " + presos + " registro(s) só no celular"; return; }
     dot.style.background = "#4C7C59"; txt.textContent = "Sincronizado";
   }
   function contarPendentesLista_(lista) {
     return lista.filter(function (x) { return !x._synced || x._pendingUpdate; }).length;
   }
+  function contarPendentesProg_() {
+    return progExternas.filter(function (p) { return !p._synced || p._pendingDelete; }).length;
+  }
   function contarPendentes_() {
     return contarPendentesLista_(registros) + contarPendentesLista_(rendimentosDiarios) +
-      contarPendentesLista_(lancamentosBanco) + contarPendentesLista_(impedimentos);
+      contarPendentesLista_(lancamentosBanco) + contarPendentesLista_(impedimentos) + contarPendentesProg_();
   }
 
   // A sincronização automática redesenhava a tela inteira a cada 25s: apagava
@@ -3062,6 +3555,30 @@
       });
     }).catch(function (err) { errosSync.push(err && err.message ? err.message : String(err)); });
 
+    // Programação das outras equipes (PDFs): sobe os novos e as exclusões
+    var pularProg = false;
+    progExternas.filter(function (p) { return !p._synced && !p._pendingDelete; }).forEach(function (p) {
+      chain = chain.then(function () {
+        if (pularProg) return;
+        return postToBackend({ token: config.token, action: "salvar_prog_externa", prog: {
+          id: p.id, cultura: p.cultura, supervisor: p.supervisor || "", ini: p.ini, fim: p.fim, arquivo: p.arquivo || "", entradas: p.entradas || []
+        } }).then(function (res) {
+          if (res && res.ok) { progBackendOk = true; p._synced = true; saveProgExternas_(); }
+          else if (res && /desconhecida/i.test(res.error || "")) { progBackendOk = false; pularProg = true; }
+          else { errosSync.push((res && res.error) || "erro ao salvar a programação das outras equipes"); }
+        }).catch(function (err) { errosSync.push(err && err.message ? err.message : String(err)); });
+      });
+    });
+    progExternas.filter(function (p) { return p._pendingDelete; }).forEach(function (p) {
+      chain = chain.then(function () {
+        if (pularProg) return;
+        return postToBackend({ token: config.token, action: "excluir_prog_externa", id: p.id }).then(function (res) {
+          if (res && res.ok) { progExternas = progExternas.filter(function (x) { return x !== p; }); saveProgExternas_(); }
+          else if (res && /desconhecida/i.test(res.error || "")) { progBackendOk = false; pularProg = true; }
+        }).catch(function () {});
+      });
+    });
+
     chain = chain.then(function () {
       if (pularImped) return;
       return postToBackend({ token: config.token, action: "list_impedimentos" }).then(function (res) {
@@ -3081,6 +3598,21 @@
         mesclarImpedimentosDoServidor_(res.impedimentos || []);
       }).catch(function () { /* sem internet no meio: tenta no próximo ciclo */ });
     });
+    chain = chain.then(function () {
+      if (pularProg) return;
+      return postToBackend({ token: config.token, action: "list_prog_externa" }).then(function (res) {
+        if (!res || !res.ok) {
+          if (res && /desconhecida/i.test(res.error || "")) progBackendOk = false;
+          return;
+        }
+        progBackendOk = true;
+        var texto = JSON.stringify(res.programacoes || []);
+        if (texto === ultimaRespostaProg && !enviouAlgo) return;
+        ultimaRespostaProg = texto;
+        dadosMudaram = true;
+        mesclarProgDoServidor_(res.programacoes || []);
+      }).catch(function () { /* tenta no próximo ciclo */ });
+    });
 
     return chain.then(function () {
       syncing = false;
@@ -3091,9 +3623,9 @@
         // se for erro novo ou se o toque foi no "Sincronizar agora"
         if (manual || errosSync[0] !== ultimoErroSync) showToast("Erro ao sincronizar: " + errosSync[0]);
         ultimoErroSync = errosSync[0];
-      } else if (!impedBackendOk && contarPendentesLista_(impedimentos) && (manual || !avisouBackendImped)) {
+      } else if (((!impedBackendOk && contarPendentesLista_(impedimentos)) || (!progBackendOk && contarPendentesProg_())) && (manual || !avisouBackendImped)) {
         avisouBackendImped = true;
-        showToast("⛔ Impedimentos guardados só no celular: falta colar o Impedimentos.gs no Apps Script.");
+        showToast("⛔ Tem registro guardado só no celular: falta atualizar o Impedimentos.gs no Apps Script.");
       } else {
         ultimoErroSync = "";
         if (manual) showToast("Tudo sincronizado ✓");
@@ -3250,6 +3782,7 @@
     loadRendimentosDiarios();
     loadLancamentosBanco();
     loadImpedimentos_();
+    loadProgExternas_();
     try {
       var cAtiv = localStorage.getItem(ATIVIDADES_CACHE_KEY);
       if (cAtiv) currentAtividades = JSON.parse(cAtiv);
@@ -3294,6 +3827,19 @@
     document.getElementById("btn-save-setores-ativ").addEventListener("click", salvarSetoresAtivLista);
     document.getElementById("btn-save-equipes-externas").addEventListener("click", salvarEquipesExternasLista);
 
+    // Programação das outras equipes (PDF)
+    document.getElementById("btn-close-prog").addEventListener("click", fecharModalProg_);
+    document.getElementById("modal-prog-overlay").addEventListener("click", function (e) { if (e.target.id === "modal-prog-overlay") fecharModalProg_(); });
+    document.getElementById("btn-prog-escolher").addEventListener("click", function () { document.getElementById("prog-arquivo").click(); });
+    document.getElementById("prog-arquivo").addEventListener("change", function (e) {
+      var f = e.target.files && e.target.files[0];
+      if (f) importarPdfProg_(f);
+    });
+    document.getElementById("btn-close-progdia").addEventListener("click", function () { document.getElementById("modal-progdia-overlay").classList.remove("active"); });
+    document.getElementById("modal-progdia-overlay").addEventListener("click", function (e) {
+      if (e.target.id === "modal-progdia-overlay") document.getElementById("modal-progdia-overlay").classList.remove("active");
+    });
+
     // Modal de impedimento
     document.getElementById("btn-close-imped").addEventListener("click", fecharModalImpedimento);
     document.getElementById("modal-imped-overlay").addEventListener("click", function (e) { if (e.target.id === "modal-imped-overlay") fecharModalImpedimento(); });
@@ -3303,8 +3849,8 @@
     document.getElementById("imped-funcionarios").addEventListener("change", atualizarHHImped_);
     document.getElementById("imped-ocupada-ate").addEventListener("change", atualizarRemarcarImped_);
     document.getElementById("imped-remarcar-data").addEventListener("change", atualizarRemarcarImped_);
-    document.getElementById("imped-data").addEventListener("change", atualizarRemarcarImped_);
-    document.getElementById("imped-setor").addEventListener("input", atualizarRemarcarImped_);
+    document.getElementById("imped-data").addEventListener("change", function () { atualizarRemarcarImped_(); atualizarConferenciaPdfImped_(!impedEditId); });
+    document.getElementById("imped-setor").addEventListener("input", function () { atualizarRemarcarImped_(); atualizarConferenciaPdfImped_(!impedEditId); });
     document.getElementById("ativ-setor").addEventListener("input", atualizarHintSetor_);
     document.getElementById("btn-escolher-setores").addEventListener("click", abrirSeletorSetores_);
     document.getElementById("btn-sugerir-atrasados").addEventListener("click", sugerirSetoresAtrasados_);
