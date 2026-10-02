@@ -1,4 +1,7 @@
-var CACHE_NAME = 'prog-atividades-app-v12';
+var CACHE_NAME = 'prog-atividades-app-v13';
+// PDF recebido pelo "Compartilhar" do Android (WhatsApp → Atividades): fica
+// guardado aqui só até o app abrir e pegar
+var SHARE_CACHE = 'prog-compartilhado';
 var ASSETS = [
   './',
   './index.html',
@@ -28,7 +31,7 @@ self.addEventListener('activate', function (event) {
   event.waitUntil(
     caches.keys().then(function (keys) {
       return Promise.all(
-        keys.filter(function (k) { return k !== CACHE_NAME; })
+        keys.filter(function (k) { return k !== CACHE_NAME && k !== SHARE_CACHE; })
             .map(function (k) { return caches.delete(k); })
       );
     })
@@ -38,6 +41,13 @@ self.addEventListener('activate', function (event) {
 
 self.addEventListener('fetch', function (event) {
   var url = event.request.url;
+
+  // "Compartilhar → Atividades": o Android manda o PDF pra cá (POST).
+  // Guarda o arquivo e abre o app, que lê o PDF na hora.
+  if (event.request.method === 'POST' && url.indexOf('/compartilhar-pdf') > -1) {
+    event.respondWith(receberCompartilhado_(event.request));
+    return;
+  }
 
   // Nunca cachear chamadas ao backend (Google Apps Script) - sempre tentar rede real
   if (url.indexOf('script.google.com') > -1 || url.indexOf('googleusercontent.com') > -1) {
@@ -97,3 +107,23 @@ self.addEventListener('fetch', function (event) {
     })
   );
 });
+
+function receberCompartilhado_(request) {
+  var base = self.registration.scope;
+  return request.formData().then(function (form) {
+    var arquivos = form.getAll('pdf').filter(function (f) { return f && typeof f !== 'string'; });
+    return caches.open(SHARE_CACHE).then(function (cache) {
+      return Promise.all(arquivos.map(function (f, i) {
+        return cache.put(base + '__compartilhado/' + i, new Response(f, {
+          headers: { 'Content-Type': f.type || 'application/pdf', 'X-Nome': encodeURIComponent(f.name || ('arquivo' + (i + 1) + '.pdf')) }
+        }));
+      })).then(function () {
+        return cache.put(base + '__compartilhado/qtd', new Response(String(arquivos.length)));
+      });
+    });
+  }).catch(function (err) {
+    console.log('[SW] Falha ao receber o compartilhamento:', err);
+  }).then(function () {
+    return Response.redirect(base + 'index.html?compartilhado=1', 303);
+  });
+}

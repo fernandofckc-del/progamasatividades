@@ -144,7 +144,7 @@
       <div>
         <div class="plate-label">CONTROLE DE CAMPO</div>
         <div class="plate-title">PROGRAMAÇÃO DE ATIVIDADES</div>
-        <div style="font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:#CFE0BB; margin-top:2px;" id="app-version">v1.4</div>
+        <div style="font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:#CFE0BB; margin-top:2px;" id="app-version">v1.5</div>
       </div>
       <button class="gear-btn" id="btn-open-config">⚙️</button>
     </div>
@@ -2768,7 +2768,14 @@
     renderListaProg_();
     document.getElementById("modal-prog-overlay").classList.add("active");
   }
-  function fecharModalProg_() { document.getElementById("modal-prog-overlay").classList.remove("active"); progPreview = null; }
+  function fecharModalProg_() {
+    document.getElementById("modal-prog-overlay").classList.remove("active");
+    progPreview = null;
+    if (progFilaCompartilhada.length) {
+      showToast(progFilaCompartilhada.length + " PDF(s) compartilhado(s) ficaram sem importar.");
+      progFilaCompartilhada = [];
+    }
+  }
   function renderListaProg_() {
     var el = document.getElementById("prog-lista");
     var lista = progAtivas_().slice().sort(function (a, b) { return a.ini < b.ini ? 1 : -1; });
@@ -2806,7 +2813,7 @@
     var prev = document.getElementById("prog-preview");
     prev.style.display = "none";
     progPreview = null;
-    status.textContent = "Lendo o PDF...";
+    status.textContent = "Lendo o PDF" + (file && file.name ? " " + file.name : "") + "...";
     lerArquivoPdf_(file).then(function (r) {
       if (!r.entradas.length) throw new Error("não achei nenhum serviço nesse PDF. Ele é o Relatório de Ordem de Serviço?");
       progPreview = {
@@ -2836,7 +2843,8 @@
         html += '<div class="hint" style="margin-top:6px;color:#8A5A2E;">Vai substituir o PDF anterior do ' + escapeHtml(rotuloProg_(progPreview)) + ' (' +
           substitui.map(function (p) { return fmtDate(p.ini).slice(0, 5) + '–' + fmtDate(p.fim).slice(0, 5); }).join(", ") + ').</div>';
       }
-      html += '<button class="save-btn" id="btn-prog-salvar" style="margin-top:10px;">✅ Salvar esta programação</button>';
+      html += '<button class="save-btn" id="btn-prog-salvar" style="margin-top:10px;">✅ Salvar esta programação</button>' +
+        (progFilaCompartilhada.length ? '<div class="hint" style="margin-top:6px;">Depois deste, tem mais ' + progFilaCompartilhada.length + ' PDF(s) compartilhado(s).</div>' : '');
       prev.innerHTML = html;
       prev.style.display = "";
       document.getElementById("btn-prog-salvar").addEventListener("click", salvarProgPreview_);
@@ -2859,9 +2867,55 @@
     });
     saveProgExternas_();
     showToast("Programação " + rotuloProg_(p) + " salva (" + p.entradas.length + " serviços).");
-    fecharModalProg_();
+    var temMais = progFilaCompartilhada.length > 0;
+    if (temMais) { progPreview = null; } else { fecharModalProg_(); }
     renderContent();
     trySync();
+    if (temMais) setTimeout(proximoPdfCompartilhado_, 300);
+  }
+
+  // ---- PDF recebido pelo "Compartilhar" do Android (WhatsApp → Atividades) ----
+  // O service worker guarda o(s) arquivo(s) e abre o app com ?compartilhado=1
+  var progFilaCompartilhada = [];
+  function receberPdfsCompartilhados_() {
+    if (location.search.indexOf("compartilhado=1") === -1) return;
+    try { history.replaceState(null, "", location.pathname); } catch (e) {}
+    if (!("caches" in window)) return;
+    var chave = function (nome) { return new URL("./__compartilhado/" + nome, location.href).href; };
+    caches.open("prog-compartilhado").then(function (cache) {
+      return cache.match(chave("qtd")).then(function (r) { return r ? r.text() : "0"; }).then(function (qtdTxt) {
+        var qtd = parseInt(qtdTxt, 10) || 0, ps = [];
+        for (var i = 0; i < qtd; i++) {
+          ps.push((function (k) {
+            return cache.match(k).then(function (resp) {
+              if (!resp) return null;
+              var nome = decodeURIComponent(resp.headers.get("X-Nome") || "programacao.pdf");
+              return resp.blob().then(function (b) { return new File([b], nome, { type: b.type || "application/pdf" }); });
+            }).then(function (f) { cache.delete(k); return f; });
+          })(chave(i)));
+        }
+        cache.delete(chave("qtd"));
+        return Promise.all(ps);
+      });
+    }).then(function (arquivos) {
+      arquivos = (arquivos || []).filter(function (f) { return f; });
+      if (!arquivos.length) { showToast("Não chegou nenhum PDF pelo compartilhamento."); return; }
+      progFilaCompartilhada = arquivos;
+      visaoAtual = "semana";
+      renderContent();
+      proximoPdfCompartilhado_();
+    }).catch(function () { showToast("Não consegui abrir o PDF compartilhado."); });
+  }
+  function proximoPdfCompartilhado_() {
+    if (!progFilaCompartilhada.length) return;
+    var f = progFilaCompartilhada.shift();
+    if (!document.getElementById("modal-prog-overlay").classList.contains("active")) {
+      document.getElementById("prog-status").textContent = "";
+      document.getElementById("prog-preview").style.display = "none";
+      renderListaProg_();
+      document.getElementById("modal-prog-overlay").classList.add("active");
+    }
+    importarPdfProg_(f);
   }
   // ---- Detalhe de um dia (toque na linha "Outras equipes" da semana) ----
   function abrirProgDia_(dataISO) {
@@ -3816,6 +3870,7 @@
     renderContent();
     refreshSyncPill();
     iniciarFirebaseManut_();
+    receberPdfsCompartilhados_();
 
     document.getElementById("btn-open-config").addEventListener("click", abrirConfig);
     document.getElementById("btn-close-config").addEventListener("click", fecharConfig);
