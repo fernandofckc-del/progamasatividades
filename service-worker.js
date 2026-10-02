@@ -1,4 +1,4 @@
-var CACHE_NAME = 'prog-atividades-app-v13';
+var CACHE_NAME = 'prog-atividades-app-v14';
 // PDF recebido pelo "Compartilhar" do Android (WhatsApp → Atividades): fica
 // guardado aqui só até o app abrir e pegar
 var SHARE_CACHE = 'prog-compartilhado';

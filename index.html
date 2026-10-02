@@ -134,6 +134,25 @@
   details.prog-dia summary { cursor:pointer; font-weight:700; color:#6E4B12; }
   .prog-linha { padding:5px 0; border-top:1px solid #EFE2C4; }
   .prog-linha:first-of-type { border-top:none; }
+
+  /* Importar minha programação (PDF das Ordens de Serviço da equipe) */
+  .imp-sec { background:#FFFDF8; border:1px solid #DCD3BC; border-radius:6px; padding:10px 12px; margin-top:10px; }
+  .imp-tit { font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6B6153; letter-spacing:.06em; text-transform:uppercase; margin-bottom:6px; }
+  .imp-linha { padding:8px 0; border-top:1px solid #EFEAD9; }
+  .imp-linha:first-of-type { border-top:none; padding-top:2px; }
+  .imp-sec select { width:100%; border:1px solid #D2C7AB; background:#FBF8F1; border-radius:3px; padding:8px; font-size:13.5px; margin-top:5px; color:#241F1A; }
+  .imp-sec select.falta { border-color:#C9533A; background:#FBEDE8; }
+  .imp-pdf { font-size:12.5px; font-weight:700; color:#241F1A; line-height:1.3; }
+  .imp-sub { font-size:11px; color:#6B6153; margin-top:2px; line-height:1.35; }
+  .imp-aviso { font-size:11.5px; color:#6E4B12; background:#FBF4E4; border:1px solid #E6CF9C; border-radius:4px; padding:7px 9px; margin-top:8px; line-height:1.4; }
+  details.imp-dia { border-top:1px solid #EFEAD9; padding:7px 0; font-size:12px; }
+  details.imp-dia:first-of-type { border-top:none; }
+  details.imp-dia summary { cursor:pointer; font-weight:700; }
+  .imp-os { padding:4px 0 4px 9px; border-left:3px solid #DCD3BC; margin:6px 0 0 2px; font-size:11.5px; line-height:1.45; }
+  .imp-tag { display:inline-block; font-size:9.5px; font-weight:700; border-radius:3px; padding:1px 5px; margin-left:5px; vertical-align:1px; }
+  .imp-tag.lembrado { background:#DCEEDC; color:#28603C; }
+  .imp-tag.sugestao { background:#E3ECF5; color:#2E5A80; }
+  .imp-tag.falta { background:#F5DADA; color:#8A2E2E; }
 </style>
 </head>
 <body>
@@ -144,7 +163,7 @@
       <div>
         <div class="plate-label">CONTROLE DE CAMPO</div>
         <div class="plate-title">PROGRAMAÇÃO DE ATIVIDADES</div>
-        <div style="font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:#CFE0BB; margin-top:2px;" id="app-version">v1.5</div>
+        <div style="font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:#CFE0BB; margin-top:2px;" id="app-version">v1.6</div>
       </div>
       <button class="gear-btn" id="btn-open-config">⚙️</button>
     </div>
@@ -366,6 +385,23 @@
     <div id="prog-preview" style="display:none;margin-top:10px;background:#FFFDF8;border:1px solid #DCD3BC;border-radius:6px;padding:10px 12px;"></div>
     <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6B6153;letter-spacing:.06em;text-transform:uppercase;margin:16px 0 6px;">PDFs guardados</div>
     <div id="prog-lista"></div>
+  </div>
+</div>
+
+<!-- MODAL: IMPORTAR MINHA PROGRAMAÇÃO (PDF das Ordens de Serviço da nossa equipe) -->
+<div class="modal-overlay" id="modal-minha-overlay">
+  <div class="modal-box">
+    <button class="modal-close" id="btn-close-minha">✕</button>
+    <div class="modal-title">📥 Importar minha programação</div>
+    <div class="modal-sub">Escolha o PDF das <b>Ordens de Serviço</b> da sua equipe (o que traz o nome de cada funcionário). O app lê quem faz o quê, em que setor e em que dia, e lança tudo na grade com os horários em sequência.</div>
+    <input id="minha-arquivo" type="file" accept="application/pdf,.pdf" style="display:none;">
+    <button class="photo-btn" id="btn-minha-escolher" style="background:#4C6B2F;">📥 Escolher o PDF</button>
+    <div id="minha-status" class="hint" style="margin-top:8px;font-size:12px;"></div>
+    <div id="minha-preview" style="display:none;"></div>
+    <div id="minha-hist-wrap" style="display:none;">
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6B6153;letter-spacing:.06em;text-transform:uppercase;margin:16px 0 4px;">Importações feitas</div>
+      <div id="minha-hist"></div>
+    </div>
   </div>
 </div>
 
@@ -1255,7 +1291,10 @@
     '</div>';
     // PDFs da programação das outras equipes que cobrem esta semana
     var pdfsSemana = progAtivas_().filter(function (p) { return p.ini <= dias[4] && p.fim >= dias[0]; }).map(rotuloProg_);
-    html += '<button class="photo-btn" id="btn-prog-equipes" style="background:#8A6A2E;margin-bottom:4px;">🚜 Programação das outras equipes (PDF)</button>' +
+    html += '<div style="display:flex;gap:8px;margin-bottom:4px;">' +
+        '<button class="photo-btn" id="btn-minha-prog" style="background:#4C6B2F;flex:1;font-size:13px;line-height:1.2;padding:11px 8px;">📥 Minha programação (PDF)</button>' +
+        '<button class="photo-btn" id="btn-prog-equipes" style="background:#8A6A2E;flex:1;font-size:13px;line-height:1.2;padding:11px 8px;">🚜 Outras equipes (PDF)</button>' +
+      '</div>' +
       '<div class="hint" style="margin-bottom:10px;">' + (pdfsSemana.length
         ? 'PDFs desta semana: <b>' + escapeHtml(pdfsSemana.join(", ")) + '</b>'
         : 'Nenhum PDF das outras equipes pra esta semana ainda.') + '</div>';
@@ -1370,6 +1409,7 @@
     document.getElementById("btn-copiar-semana-anterior").addEventListener("click", function () { copiarSemanaAnterior(segunda); });
     document.getElementById("btn-compartilhar-semana").addEventListener("click", function () { compartilharSemana(segunda, dias); });
     document.getElementById("btn-prog-equipes").addEventListener("click", abrirModalProg_);
+    document.getElementById("btn-minha-prog").addEventListener("click", abrirModalMinha_);
     el.querySelectorAll("[data-prog-dia]").forEach(function (b) {
       b.addEventListener("click", function () { abrirProgDia_(b.getAttribute("data-prog-dia")); });
     });
@@ -2105,7 +2145,11 @@
     document.getElementById("ativ-data").value = registro ? registro.data : (diaPre || diaSelecionado);
 
     var atividadeSel = document.getElementById("ativ-atividade");
-    atividadeSel.innerHTML = currentAtividades.map(function (a) { return '<option value="' + escapeHtml(a.nome) + '">' + escapeHtml(a.nome) + '</option>'; }).join("");
+    var nomesAtiv = currentAtividades.map(function (a) { return a.nome; });
+    // bloco com atividade que não está (mais) na lista - ex.: veio do PDF com
+    // o nome do serviço. Entra como opção; antes a edição trocava sem querer.
+    if (registro && registro.atividade && nomesAtiv.indexOf(registro.atividade) === -1) nomesAtiv.unshift(registro.atividade);
+    atividadeSel.innerHTML = nomesAtiv.map(function (n) { return '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + '</option>'; }).join("");
     if (registro) atividadeSel.value = registro.atividade;
 
     var listaFunc = document.getElementById("ativ-funcionarios-list");
@@ -2223,7 +2267,7 @@
           porFuncionario[func] = fim;
           registros.unshift({
             id: uid(), data: diaNovo, funcionario: func, atividade: r.atividade, setor: r.setor || "", duracaoMin: r.duracaoMin, areaHa: r.areaHa || 0,
-            horarioInicio: inicio, horarioFim: fim, observacao: limparTagRemarcada_(r.observacao), concluida: false,
+            horarioInicio: inicio, horarioFim: fim, observacao: limparTagOS_(limparTagRemarcada_(r.observacao)), concluida: false,
             _synced: false, _pendingDelete: false
           });
           totalCopiado++;
@@ -2726,7 +2770,7 @@
       document.head.appendChild(s);
     });
   }
-  function lerArquivoPdf_(file) {
+  function lerPaginasPdf_(file) {
     return carregarPdfJs_().then(function (lib) {
       return file.arrayBuffer().then(function (buf) { return lib.getDocument({ data: new Uint8Array(buf) }).promise; });
     }).then(function (doc) {
@@ -2735,7 +2779,7 @@
         ps.push(doc.getPage(n).then(function (pg) { return pg.getTextContent(); }).then(function (tc) { return tc.items; }));
       }
       return Promise.all(ps);
-    }).then(lerRelatorioOS_);
+    });
   }
 
   // Planilha é a fonte da verdade do que já subiu; o que só está aqui não se perde
@@ -2810,47 +2854,59 @@
   }
   function importarPdfProg_(file) {
     var status = document.getElementById("prog-status");
-    var prev = document.getElementById("prog-preview");
-    prev.style.display = "none";
+    document.getElementById("prog-preview").style.display = "none";
     progPreview = null;
     status.textContent = "Lendo o PDF" + (file && file.name ? " " + file.name : "") + "...";
-    lerArquivoPdf_(file).then(function (r) {
-      if (!r.entradas.length) throw new Error("não achei nenhum serviço nesse PDF. Ele é o Relatório de Ordem de Serviço?");
-      progPreview = {
-        id: r.cultura + "|" + r.supervisor + "|" + r.semanaIni + "|" + r.semanaFim, cultura: r.cultura, supervisor: r.supervisor,
-        ini: r.semanaIni, fim: r.semanaFim, arquivo: file.name || "", entradas: r.entradas, totaisInformados: r.totaisInformados
-      };
-      status.textContent = "";
-      var porDia = {};
-      r.entradas.forEach(function (e) {
-        for (var d = e.i; d <= e.f; d = addDiasISO(d, 1)) { (porDia[d] = porDia[d] || {})[e.t] = true; if (d >= "9999") break; }
-      });
-      var conferido = r.totaisInformados
-        ? (r.totaisInformados === r.entradas.length ? ' <span style="color:#28603C;">✓ o PDF informa ' + r.totaisInformados + '</span>'
-                                                     : ' <span style="color:#B4442E;">⚠ o PDF informa ' + r.totaisInformados + '</span>')
-        : '';
-      var html = '<div style="font-size:14px;font-weight:700;">' + escapeHtml(rotuloProg_(progPreview)) + ' · ' + fmtDate(r.semanaIni).slice(0, 5) + ' a ' + fmtDate(r.semanaFim).slice(0, 5) + '</div>' +
-        '<div style="font-size:12px;margin:3px 0 8px;">Li <b>' + r.entradas.length + ' serviços</b>.' + conferido + '</div>';
-      Object.keys(porDia).sort().forEach(function (d) {
-        var dt = new Date(d + "T00:00:00");
-        html += '<div style="font-size:11.5px;margin-bottom:3px;"><b>' + NOMES_DIA_SEMANA[dt.getDay()] + ' ' + fmtDate(d).slice(0, 5) + ':</b> ' +
-          escapeHtml(Object.keys(porDia[d]).sort().join(", ")) + '</div>';
-      });
-      var substitui = progAtivas_().filter(function (p) {
-        return p.id !== progPreview.id && mesmaEquipeProg_(p, progPreview) && p.ini <= r.semanaFim && p.fim >= r.semanaIni;
-      });
-      if (substitui.length) {
-        html += '<div class="hint" style="margin-top:6px;color:#8A5A2E;">Vai substituir o PDF anterior do ' + escapeHtml(rotuloProg_(progPreview)) + ' (' +
-          substitui.map(function (p) { return fmtDate(p.ini).slice(0, 5) + '–' + fmtDate(p.fim).slice(0, 5); }).join(", ") + ').</div>';
+    lerPaginasPdf_(file).then(function (paginas) {
+      var c = classificarPdf_(paginas);
+      if (c.tipo === "minha") {
+        // é a programação da NOSSA equipe: vai pra janela certa
+        status.textContent = "";
+        abrirPreviewMinhaDe_(c.blocos, file);
+        showToast("Esse PDF é a programação da sua equipe - abri em 📥 Minha programação.");
+        return;
       }
-      html += '<button class="save-btn" id="btn-prog-salvar" style="margin-top:10px;">✅ Salvar esta programação</button>' +
-        (progFilaCompartilhada.length ? '<div class="hint" style="margin-top:6px;">Depois deste, tem mais ' + progFilaCompartilhada.length + ' PDF(s) compartilhado(s).</div>' : '');
-      prev.innerHTML = html;
-      prev.style.display = "";
-      document.getElementById("btn-prog-salvar").addEventListener("click", salvarProgPreview_);
+      if (c.tipo !== "outras") throw new Error("não achei nenhum serviço nesse PDF. Ele é o Relatório de Ordem de Serviço?");
+      status.textContent = "";
+      mostrarPreviewProg_(c.relatorio, file);
     }).catch(function (err) {
       status.innerHTML = '<span style="color:#B4442E;font-weight:700;">⚠ Não consegui ler: ' + escapeHtml(err && err.message ? err.message : String(err)) + '</span>';
     });
+  }
+  function mostrarPreviewProg_(r, file) {
+    var prev = document.getElementById("prog-preview");
+    file = file || {};
+    progPreview = {
+      id: r.cultura + "|" + r.supervisor + "|" + r.semanaIni + "|" + r.semanaFim, cultura: r.cultura, supervisor: r.supervisor,
+      ini: r.semanaIni, fim: r.semanaFim, arquivo: file.name || "", entradas: r.entradas, totaisInformados: r.totaisInformados
+    };
+    var porDia = {};
+    r.entradas.forEach(function (e) {
+      for (var d = e.i; d <= e.f; d = addDiasISO(d, 1)) { (porDia[d] = porDia[d] || {})[e.t] = true; if (d >= "9999") break; }
+    });
+    var conferido = r.totaisInformados
+      ? (r.totaisInformados === r.entradas.length ? ' <span style="color:#28603C;">✓ o PDF informa ' + r.totaisInformados + '</span>'
+                                                   : ' <span style="color:#B4442E;">⚠ o PDF informa ' + r.totaisInformados + '</span>')
+      : '';
+    var html = '<div style="font-size:14px;font-weight:700;">' + escapeHtml(rotuloProg_(progPreview)) + ' · ' + fmtDate(r.semanaIni).slice(0, 5) + ' a ' + fmtDate(r.semanaFim).slice(0, 5) + '</div>' +
+      '<div style="font-size:12px;margin:3px 0 8px;">Li <b>' + r.entradas.length + ' serviços</b>.' + conferido + '</div>';
+    Object.keys(porDia).sort().forEach(function (d) {
+      var dt = new Date(d + "T00:00:00");
+      html += '<div style="font-size:11.5px;margin-bottom:3px;"><b>' + NOMES_DIA_SEMANA[dt.getDay()] + ' ' + fmtDate(d).slice(0, 5) + ':</b> ' +
+        escapeHtml(Object.keys(porDia[d]).sort().join(", ")) + '</div>';
+    });
+    var substitui = progAtivas_().filter(function (p) {
+      return p.id !== progPreview.id && mesmaEquipeProg_(p, progPreview) && p.ini <= r.semanaFim && p.fim >= r.semanaIni;
+    });
+    if (substitui.length) {
+      html += '<div class="hint" style="margin-top:6px;color:#8A5A2E;">Vai substituir o PDF anterior do ' + escapeHtml(rotuloProg_(progPreview)) + ' (' +
+        substitui.map(function (p) { return fmtDate(p.ini).slice(0, 5) + '–' + fmtDate(p.fim).slice(0, 5); }).join(", ") + ').</div>';
+    }
+    html += '<button class="save-btn" id="btn-prog-salvar" style="margin-top:10px;">✅ Salvar esta programação</button>' +
+      (progFilaCompartilhada.length ? '<div class="hint" style="margin-top:6px;">Depois deste, tem mais ' + progFilaCompartilhada.length + ' PDF(s) compartilhado(s).</div>' : '');
+    prev.innerHTML = html;
+    prev.style.display = "";
+    document.getElementById("btn-prog-salvar").addEventListener("click", salvarProgPreview_);
   }
   function salvarProgPreview_() {
     var p = progPreview;
@@ -2909,14 +2965,680 @@
   function proximoPdfCompartilhado_() {
     if (!progFilaCompartilhada.length) return;
     var f = progFilaCompartilhada.shift();
-    if (!document.getElementById("modal-prog-overlay").classList.contains("active")) {
-      document.getElementById("prog-status").textContent = "";
-      document.getElementById("prog-preview").style.display = "none";
-      renderListaProg_();
-      document.getElementById("modal-prog-overlay").classList.add("active");
-    }
-    importarPdfProg_(f);
+    // lê primeiro e abre a janela certa: a programação da nossa equipe ou a das outras
+    showToast("Lendo o PDF" + (f.name ? " " + f.name : "") + "...");
+    lerPaginasPdf_(f).then(function (paginas) {
+      var c = classificarPdf_(paginas);
+      if (c.tipo === "minha") { abrirPreviewMinhaDe_(c.blocos, f); return; }
+      if (c.tipo === "outras") { abrirPreviewProgDe_(c.relatorio, f); return; }
+      throw new Error("ele não parece ser uma Ordem de Serviço (nem a da sua equipe, nem a das outras).");
+    }).catch(function (err) {
+      abrirModalMinha_();
+      document.getElementById("minha-status").innerHTML = '<span style="color:#B4442E;font-weight:700;">⚠ Não consegui ler ' + escapeHtml(f.name || "o PDF") + ': ' +
+        escapeHtml(err && err.message ? err.message : String(err)) + '</span>' +
+        (progFilaCompartilhada.length ? '<button class="photo-btn" id="btn-minha-proximo" style="margin-top:8px;background:#8A8072;">➡ Ler o próximo PDF compartilhado</button>' : '');
+      var bt = document.getElementById("btn-minha-proximo");
+      if (bt) bt.addEventListener("click", proximoPdfCompartilhado_);
+    });
   }
+  // ================= MINHA PROGRAMAÇÃO (PDF das Ordens de Serviço da equipe) =================
+  // É o PDF "Ordem de Serviço" do sistema da fazenda (NNTI), uma OS por
+  // bloco: Data / Data Inic / Data Fim, Supervisor, Encarregado, Serviço,
+  // OS Nº, cultura e setor, Observação e a equipe (Funcionario + Meta
+  // Prevista de cada um). Uma OS pode virar a página no meio da equipe.
+  function lerMinhasOS_(paginas) {
+    var RE_DATA = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+    function iso(br) { var m = br.match(RE_DATA); return m ? m[3] + "-" + m[2] + "-" + m[1] : ""; }
+    function num(s) { var n = parseFloat(String(s).replace(/\./g, "").replace(",", ".")); return isFinite(n) ? n : 0; }
+    var blocos = [], atual = null;
+    function fechar() { if (atual && atual.os) blocos.push(atual); atual = null; }
+    paginas.forEach(function (itens) {
+      var its = itens.map(function (it) { return { s: String(it.str || "").trim(), x: it.transform[4], y: it.transform[5] }; })
+        .filter(function (it) { return it.s; });
+      // topo de cada OS = rótulo "Data....:" na margem esquerda
+      var topos = its.filter(function (it) { return /^Data\.{3,}:?$/.test(it.s) && it.x < 40; })
+        .map(function (it) { return it.y; }).sort(function (a, b) { return b - a; });
+      // faixas da página: [antes da 1ª OS (continuação da página anterior)] + uma por OS
+      var cortes = [Infinity].concat(topos.map(function (y) { return y + 4; })).concat([-Infinity]);
+      for (var k = 0; k < cortes.length - 1; k++) {
+        var de = cortes[k], ate = cortes[k + 1];
+        var parte = its.filter(function (it) { return it.y < de && it.y >= ate; })
+          .sort(function (a, b) { return (b.y - a.y) || (a.x - b.x); });
+        if (k > 0) { fechar(); atual = { pessoas: [], totalInformado: 0, obs: "", servico: "", setor: "", supervisor: "", encarregado: "" }; }
+        if (!atual) continue; // cabeçalho da empresa, antes da primeira OS
+        // datas na coluna da esquerda: emissão, início, fim
+        var datas = parte.filter(function (it) { return RE_DATA.test(it.s) && it.x > 40 && it.x < 110; });
+        if (k > 0 && datas.length >= 3) { atual.emissao = iso(datas[0].s); atual.ini = iso(datas[1].s); atual.fim = iso(datas[2].s); }
+        else if (k > 0 && datas.length === 2) { atual.ini = iso(datas[0].s); atual.fim = iso(datas[1].s); }
+        // coluna do meio: supervisor, encarregado, serviço
+        var meio = parte.filter(function (it) { return it.x > 160 && it.x < 260 && !/^Funcionario$/i.test(it.s) && !/^\.+/.test(it.s); });
+        if (k > 0 && meio.length >= 3) { atual.supervisor = meio[0].s; atual.encarregado = meio[1].s; atual.servico = meio[2].s; }
+        parte.forEach(function (it) {
+          var m;
+          if ((m = it.s.match(/OS\s*N[º°o]?\.?\s*:?\s*(\d+)/i))) atual.os = m[1];
+          else if ((m = it.s.match(/^Observa[çc][ãa]o\.*:?(.*)$/i))) atual.obs = m[1].trim();
+          else if ((m = it.s.match(/Total de Pessoal\.*:?\s*(\d+)/i))) atual.totalInformado = parseInt(m[1], 10);
+        });
+        // cultura e setor: à direita do cabeçalho, acima da "Observação" (só no
+        // pedaço com o cabeçalho - na continuação, a meta "2,175" não é cultura)
+        var yObs = (parte.filter(function (it) { return /^Observa/i.test(it.s); })[0] || { y: -Infinity }).y;
+        var direita = parte.filter(function (it) {
+          return it.x > 430 && it.y > yObs && !/OS\s*N/i.test(it.s) && !/Pessoal|Insumos/i.test(it.s) && !/^[\d.,]+$/.test(it.s);
+        });
+        if (k > 0 && direita.length) {
+          var cult = direita.filter(function (it) { return it.x < 500; })[0];
+          var set = direita.filter(function (it) { return it.x >= 500; })[0];
+          if (cult) atual.cultura = cult.s;
+          if (set) atual.setor = set.s;
+        }
+        // equipe: linhas com "Funcionario" (nome à esquerda, meta à direita)
+        parte.filter(function (it) { return /^Funcionario$/i.test(it.s); }).forEach(function (f) {
+          var mesma = parte.filter(function (it) { return Math.abs(it.y - f.y) <= 2.5; });
+          var nome = mesma.filter(function (it) { return it.x < 150; }).map(function (it) { return it.s; }).join(" ");
+          var meta = mesma.filter(function (it) { return it.x > 440 && it.x < 530 && /^[\d.,]+$/.test(it.s); })[0];
+          var horas = mesma.filter(function (it) { return /^\d{1,2}:\d{2}$/.test(it.s); }).sort(function (a, b) { return a.x - b.x; });
+          if (nome) atual.pessoas.push({ nome: nome, meta: meta ? num(meta.s) : 0, hIni: horas[0] ? horas[0].s : "", hFim: horas[1] ? horas[1].s : "" });
+        });
+      }
+    });
+    fechar();
+    return blocos;
+  }
+
+  // Os dois PDFs do sistema da fazenda: o "Relatório de Ordem de Serviço
+  // P/Serviço" das outras equipes (uma linha por serviço/setor) e as Ordens
+  // de Serviço da nossa equipe (uma OS por bloco, com os funcionários).
+  function classificarPdf_(paginas) {
+    var minhas = lerMinhasOS_(paginas);
+    if (minhas.some(function (b) { return b.pessoas.length; })) return { tipo: "minha", blocos: minhas };
+    var r = lerRelatorioOS_(paginas);
+    if (r.entradas.length) return { tipo: "outras", relatorio: r };
+    return { tipo: "" };
+  }
+  function mostrarModalPdf_(qual) {
+    document.getElementById("modal-prog-overlay").classList.toggle("active", qual === "prog");
+    document.getElementById("modal-minha-overlay").classList.toggle("active", qual === "minha");
+  }
+  function abrirPreviewProgDe_(r, file) {
+    progPreview = null;
+    document.getElementById("prog-status").textContent = "";
+    document.getElementById("prog-preview").style.display = "none";
+    renderListaProg_();
+    mostrarModalPdf_("prog");
+    mostrarPreviewProg_(r, file);
+  }
+  function abrirPreviewMinhaDe_(blocos, file) {
+    document.getElementById("minha-status").textContent = "";
+    renderHistMinha_();
+    mostrarModalPdf_("minha");
+    prepararPreviewMinha_(blocos, (file && file.name) || "");
+  }
+
+  var MINHA_MAPA_KEY = "prog_ativ_minha_mapa_v1";   // escolhas lembradas: serviço → atividade, nome do PDF → funcionário
+  var MINHA_HIST_KEY = "prog_ativ_minha_import_v1"; // importações feitas (pra poder desfazer)
+  var minhaPreview = null;
+  var desfazendoImport = false;
+  function loadMinhaMapa_() {
+    var m = null;
+    try { m = JSON.parse(localStorage.getItem(MINHA_MAPA_KEY) || "null"); } catch (e) {}
+    m = m || {};
+    m.serv = m.serv || {}; m.servSo = m.servSo || {}; m.pess = m.pess || {};
+    return m;
+  }
+  function saveMinhaMapa_(m) { try { localStorage.setItem(MINHA_MAPA_KEY, JSON.stringify(m)); } catch (e) {} }
+  function loadMinhaHist_() { try { return JSON.parse(localStorage.getItem(MINHA_HIST_KEY) || "[]") || []; } catch (e) { return []; } }
+  function saveMinhaHist_(h) { try { localStorage.setItem(MINHA_HIST_KEY, JSON.stringify(h)); } catch (e) {} }
+
+  // "JOÃO NUNES" e "João Nunes" viram a mesma coisa pra comparar
+  function semAcento_(s) {
+    return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+  }
+  function nomeProprio_(s) {
+    return String(s || "").trim().toLowerCase().replace(/(^|\s)(\S)/g, function (m, a, c) { return a + c.toUpperCase(); })
+      .replace(/ (Da|De|Do|Das|Dos|E)(?= )/g, function (m) { return m.toLowerCase(); });
+  }
+  function primeiroNome_(s) { return nomeProprio_(String(s || "").trim().split(/\s+/)[0]); }
+  // diferem no máximo 1 letra (trocada, sobrando ou faltando): ELIECIM ↔ Eliecin
+  function distancia1_(a, b) {
+    if (a === b) return true;
+    if (Math.abs(a.length - b.length) > 1) return false;
+    var i = 0, j = 0, dif = 0;
+    while (i < a.length && j < b.length) {
+      if (a.charAt(i) === b.charAt(j)) { i++; j++; continue; }
+      if (++dif > 1) return false;
+      if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+    }
+    return dif + (a.length - i) + (b.length - j) <= 1;
+  }
+  function funcionarioExiste_(nome) { return currentFuncionarios.some(function (f) { return f.nome === nome; }); }
+  // Nome completo do PDF → funcionário cadastrado no app (só quando dá pra ter certeza)
+  function sugerirFuncionario_(nomePdf) {
+    var alvo = semAcento_(nomePdf), toks = alvo.split(" ");
+    var lista = currentFuncionarios.map(function (f) { return { nome: f.nome, n: semAcento_(f.nome) }; });
+    function unico(arr) { return arr.length === 1 ? arr[0].nome : ""; }
+    var r = unico(lista.filter(function (f) { return f.n === alvo; }));
+    if (r) return r;
+    // todas as palavras do nome do app estão no do PDF ("João Filho" ↔ "JOÃO NUNES GONZAGA FILHO")
+    r = unico(lista.filter(function (f) { var t = f.n.split(" "); return t[0] === toks[0] && t.every(function (w) { return toks.indexOf(w) > -1; }); }));
+    if (r) return r;
+    r = unico(lista.filter(function (f) { return f.n.split(" ")[0] === toks[0]; }));
+    if (r) return r;
+    if (toks[0].length >= 5) {
+      r = unico(lista.filter(function (f) { var p0 = f.n.split(" ")[0]; return p0.length >= 5 && distancia1_(p0, toks[0]); }));
+      if (r) return r;
+    }
+    return "";
+  }
+  var PALAVRAS_FRACAS_ = { PARA: 1, PELO: 1, PELA: 1, COMO: 1, ENTRE: 1, SOBRE: 1 };
+  function raizes_(txt) {
+    var out = [];
+    semAcento_(txt).split(" ").forEach(function (w) {
+      if (w.length < 4 || PALAVRAS_FRACAS_[w]) return;
+      var r = w.slice(0, 4); // "finais"/"final", "linhas"/"linha" ficam iguais
+      if (out.indexOf(r) === -1) out.push(r);
+    });
+    return out;
+  }
+  // Serviço + observação do PDF → atividade cadastrada no app
+  function sugerirAtividade_(servico, obs) {
+    var s = semAcento_(servico), o = semAcento_(obs);
+    var igual = currentAtividades.filter(function (a) { var n = semAcento_(a.nome); return n === s || (o && n === o); });
+    if (igual.length) return igual[0].nome;
+    var doPdf = raizes_(servico + " " + obs), melhor = "", melhorN = 0;
+    currentAtividades.forEach(function (a) {
+      var r = raizes_(a.nome);
+      if (r.length < 2) return; // nome curto demais pra comparar ("Outro")
+      if (r.length > melhorN && r.every(function (x) { return doPdf.indexOf(x) > -1; })) { melhor = a.nome; melhorN = r.length; }
+    });
+    return melhor;
+  }
+  function chaveSetor_(s) { return semAcento_(s).replace(/ /g, ""); }
+  // Setor do PDF → setor do app ("SED" → "Sede", que o PDF corta)
+  function setorDoApp_(setorPdf) {
+    var alvo = chaveSetor_(setorPdf);
+    if (!alvo) return { setor: "", como: "" };
+    var nomes = [];
+    currentSetoresAtiv.concat(currentTalhoes.map(function (t) { return t.nome; })).forEach(function (n) { if (n && nomes.indexOf(n) === -1) nomes.push(n); });
+    var igual = nomes.filter(function (n) { return chaveSetor_(n) === alvo; })[0];
+    if (igual) return { setor: igual, como: "" };
+    if (alvo.length >= 3) {
+      var comeco = nomes.filter(function (n) { return chaveSetor_(n).indexOf(alvo) === 0; });
+      if (comeco.length === 1) return { setor: comeco[0], como: "comeco" };
+    }
+    return { setor: String(setorPdf).trim(), como: nomes.length ? "novo" : "" };
+  }
+  function diasDaOS_(b) {
+    var ini = b.ini || b.fim, fim = b.fim || b.ini;
+    if (!ini) return [];
+    if (fim < ini) fim = ini;
+    if (ini === fim) return [ini];
+    var out = [];
+    for (var d = ini; d <= fim && out.length < 31; d = addDiasISO(d, 1)) { if (!ehFimDeSemana_(d)) out.push(d); }
+    return out.length ? out : [ini];
+  }
+  function minutosTrabalhados_(hIni, hFim) {
+    if (!hIni || !hFim) return 0;
+    var a = timeToMin(hIni), b = timeToMin(hFim);
+    if (!(b > a)) return 0;
+    return b - a - Math.max(0, Math.min(b, MIN_ALMOCO_FIM) - Math.max(a, MIN_ALMOCO_INICIO));
+  }
+  function chaveServMinha_(b) { return semAcento_(b.servico) + "|" + semAcento_(b.obs); }
+  // OS de um dia só: vale em qualquer dia (o bloco pode ter sido remarcado ou
+  // mudado de dia depois); OS de vários dias: confere dia a dia
+  function osJaLancada_(func, data, os, qualquerDia) {
+    if (!os) return false;
+    var re = new RegExp("(^|\\D)OS " + os + "(\\D|$)");
+    return registros.some(function (r) { return !r._pendingDelete && r.funcionario === func && (qualquerDia || r.data === data) && re.test(r.observacao || ""); });
+  }
+  function limparTagOS_(obs) { return String(obs || "").replace(/(\s*·\s*)?\bOS \d{3,}\b/g, "").trim(); }
+  function valorAtivValido_(v) {
+    return v === "__pdf" || v === "__nao" || (!!v && currentAtividades.some(function (a) { return a.nome === v; }));
+  }
+
+  // ---- Janela ----
+  function abrirModalMinha_() {
+    minhaPreview = null;
+    document.getElementById("minha-status").textContent = "";
+    var prev = document.getElementById("minha-preview");
+    prev.style.display = "none"; prev.innerHTML = "";
+    document.getElementById("minha-arquivo").value = "";
+    renderHistMinha_();
+    mostrarModalPdf_("minha");
+  }
+  function fecharModalMinha_() {
+    document.getElementById("modal-minha-overlay").classList.remove("active");
+    minhaPreview = null;
+    if (progFilaCompartilhada.length) {
+      showToast(progFilaCompartilhada.length + " PDF(s) compartilhado(s) ficaram sem importar.");
+      progFilaCompartilhada = [];
+    }
+  }
+  function importarMinhaPdf_(file) {
+    var status = document.getElementById("minha-status");
+    document.getElementById("minha-preview").style.display = "none";
+    minhaPreview = null;
+    status.textContent = "Lendo o PDF" + (file && file.name ? " " + file.name : "") + "...";
+    lerPaginasPdf_(file).then(function (paginas) {
+      var c = classificarPdf_(paginas);
+      if (c.tipo === "outras") {
+        status.textContent = "";
+        abrirPreviewProgDe_(c.relatorio, file);
+        showToast("Esse PDF é da programação das outras equipes - abri no lugar certo.");
+        return;
+      }
+      if (c.tipo !== "minha") throw new Error("não achei nenhuma Ordem de Serviço com funcionários nesse PDF.");
+      status.textContent = "";
+      prepararPreviewMinha_(c.blocos, (file && file.name) || "");
+    }).catch(function (err) {
+      status.innerHTML = '<span style="color:#B4442E;font-weight:700;">⚠ Não consegui ler: ' + escapeHtml(err && err.message ? err.message : String(err)) + '</span>';
+    });
+  }
+  function prepararPreviewMinha_(blocos, arquivo) {
+    var mapa = loadMinhaMapa_();
+    var p = { blocos: blocos, arquivo: arquivo, servicos: [], pessoas: [], escolhaServ: {}, escolhaPess: {}, origemServ: {}, origemPess: {} };
+    var vistosS = {}, vistosP = {}, sup = {};
+    blocos.forEach(function (b) {
+      var ks = chaveServMinha_(b);
+      if (!vistosS[ks]) { vistosS[ks] = { chave: ks, servico: b.servico, obs: b.obs, nOS: 0 }; p.servicos.push(vistosS[ks]); }
+      vistosS[ks].nOS++;
+      b.pessoas.forEach(function (pe) {
+        var kp = semAcento_(pe.nome);
+        if (!vistosP[kp]) { vistosP[kp] = { chave: kp, nome: pe.nome, nOS: 0 }; p.pessoas.push(vistosP[kp]); }
+        vistosP[kp].nOS++;
+      });
+      if (b.supervisor) sup[b.supervisor] = (sup[b.supervisor] || 0) + 1;
+    });
+    // atividade de cada serviço: a que você escolheu da última vez > a de nome
+    // parecido > a que você usou pra esse serviço (com outra observação)
+    p.servicos.forEach(function (s) {
+      var lembrado = mapa.serv[s.chave], soServ = mapa.servSo[s.chave.split("|")[0]], v = "", origem = "";
+      if (valorAtivValido_(lembrado)) { v = lembrado; origem = "lembrado"; }
+      else {
+        var sug = sugerirAtividade_(s.servico, s.obs);
+        if (sug) { v = sug; origem = "sugestão"; }
+        else if (valorAtivValido_(soServ)) { v = soServ; origem = "sugestão"; }
+      }
+      p.escolhaServ[s.chave] = v; p.origemServ[s.chave] = origem;
+    });
+    p.pessoas.forEach(function (pe) {
+      var lembrado = mapa.pess[pe.chave], v = "", origem = "";
+      if (lembrado === "__nao" || (lembrado && funcionarioExiste_(lembrado))) { v = lembrado; origem = "lembrado"; }
+      else { var sug = sugerirFuncionario_(pe.nome); if (sug) { v = sug; origem = "pelo nome"; } }
+      p.escolhaPess[pe.chave] = v; p.origemPess[pe.chave] = origem;
+    });
+    p.supervisor = Object.keys(sup).sort(function (a, b) { return sup[b] - sup[a]; })[0] || "";
+    p.encarregados = [];
+    blocos.forEach(function (b) { if (b.encarregado && p.encarregados.indexOf(b.encarregado) === -1) p.encarregados.push(b.encarregado); });
+    p.nEscalas = blocos.reduce(function (s, b) { return s + b.pessoas.length; }, 0);
+    p.totalInformado = blocos.reduce(function (s, b) { return s + (b.totalInformado || 0); }, 0);
+    p.supAnterior = (mapa.sup && p.supervisor && semAcento_(mapa.sup) !== semAcento_(p.supervisor)) ? mapa.sup : "";
+    minhaPreview = p;
+    renderPreviewMinha_();
+  }
+
+  // O que vai pra grade com as escolhas atuais: um bloco por pessoa/OS/dia,
+  // com duração (horário do PDF > rendimento da atividade pela área > o dia
+  // dividido entre as OS da pessoa) e horários em sequência.
+  function planoMinha_() {
+    var p = minhaPreview, itens = [], faltaServ = {}, faltaPess = {}, ini = "", fim = "";
+    p.blocos.forEach(function (b, ordem) {
+      var dias = diasDaOS_(b);
+      dias.forEach(function (d) { if (!ini || d < ini) ini = d; if (!fim || d > fim) fim = d; });
+      var kServ = chaveServMinha_(b), vServ = p.escolhaServ[kServ] || "";
+      if (vServ === "__nao") return;
+      if (!vServ) faltaServ[kServ] = true;
+      var atividade = vServ === "__pdf" ? (nomeServicoCurto_(b.servico) || "Serviço do PDF") : vServ;
+      var areaOS = b.pessoas.reduce(function (s, x) { return s + (x.meta || 0); }, 0);
+      var setor = setorDoApp_(b.setor).setor;
+      b.pessoas.forEach(function (pe) {
+        var kPess = semAcento_(pe.nome), vPess = p.escolhaPess[kPess] || "";
+        if (vPess === "__nao") return;
+        if (!vPess) faltaPess[kPess] = true;
+        dias.forEach(function (d) {
+          itens.push({ b: b, ordem: ordem, os: b.os, data: d, func: vPess, nomePdf: pe.nome, atividade: atividade, setor: setor, obs: b.obs,
+            areaDia: areaOS / dias.length, nPessoas: b.pessoas.length || 1, metaDia: (pe.meta || 0) / dias.length,
+            minPdf: minutosTrabalhados_(pe.hIni, pe.hFim), pendente: !vServ || !vPess,
+            jaLancada: !!(vServ && vPess && osJaLancada_(vPess, d, b.os, dias.length === 1)) });
+        });
+      });
+    });
+    var grupos = {}, ordemGrupos = [], avisosDia = [];
+    itens.forEach(function (it) {
+      if (it.pendente || it.jaLancada) return;
+      var k = it.func + "|" + it.data;
+      if (!grupos[k]) { grupos[k] = []; ordemGrupos.push(k); }
+      grupos[k].push(it);
+    });
+    ordemGrupos.forEach(function (k) {
+      var g = grupos[k], func = g[0].func, data = g[0].data;
+      var ocupado = getMinutosOcupados(func, data), fixo = 0, soltos = [];
+      g.forEach(function (it) {
+        var obj = getAtividadeObj(it.atividade);
+        it.area = temRendimento(obj) && it.areaDia > 0 ? round2Painel_(it.areaDia) : 0;
+        if (it.minPdf > 0) { it.dur = it.minPdf; it.como = "pdf"; }
+        else if (it.area) { it.dur = Math.max(5, calcularDuracaoPorRendimento(obj, it.areaDia, it.nPessoas) || 0); it.como = "rend"; }
+        else { soltos.push(it); return; }
+        fixo += it.dur;
+      });
+      if (soltos.length) {
+        // o que sobra do expediente é dividido entre as OS sem duração: pela
+        // meta quando é o mesmo serviço (mesma unidade), senão em partes iguais
+        var livre = MINUTOS_UTEIS_DIA - ocupado - fixo;
+        if (livre < soltos.length * 30) livre = soltos.length * 60; // dia já cheio: 1h pra cada e a grade avisa o excesso
+        var porMeta = soltos.every(function (it) { return it.metaDia > 0 && it.b.servico === soltos[0].b.servico; });
+        var pesos = soltos.map(function (it) { return porMeta ? it.metaDia : 1; });
+        var somaP = pesos.reduce(function (s, x) { return s + x; }, 0) || 1;
+        var acum = 0, usado = 0;
+        soltos.forEach(function (it, i) {
+          acum += pesos[i];
+          var ate = i === soltos.length - 1 ? livre : Math.round(livre * acum / somaP / 5) * 5;
+          it.dur = Math.max(5, ate - usado);
+          usado += it.dur;
+          it.como = "divide";
+        });
+      }
+      var hora = getProximoHorarioLivre(func, data);
+      g.forEach(function (it) { it.ini = hora; it.fim = somarComPausa(hora, it.dur); hora = it.fim; });
+      var total = ocupado + g.reduce(function (s, it) { return s + it.dur; }, 0);
+      var existentes = getRegistrosDia(func, data).length;
+      if (existentes || total > MINUTOS_UTEIS_DIA) avisosDia.push({ func: func, data: data, existentes: existentes, excesso: Math.max(0, total - MINUTOS_UTEIS_DIA) });
+    });
+    return {
+      itens: itens, ini: ini, fim: fim, avisosDia: avisosDia, faltaServ: faltaServ, faltaPess: faltaPess,
+      faltam: Object.keys(faltaServ).length + Object.keys(faltaPess).length,
+      novos: itens.filter(function (it) { return !it.pendente && !it.jaLancada; }),
+      jaLancadas: itens.filter(function (it) { return it.jaLancada; }).length
+    };
+  }
+
+  function opcoesAtividadeMinha_(v, servicoPdf) {
+    var ops = ['<option value=""' + (v ? '' : ' selected') + '>— escolha a atividade —</option>'];
+    currentAtividades.forEach(function (a) {
+      ops.push('<option value="' + escapeHtml(a.nome) + '"' + (v === a.nome ? ' selected' : '') + '>' + escapeHtml(a.nome) + '</option>');
+    });
+    ops.push('<option value="__pdf"' + (v === "__pdf" ? ' selected' : '') + '>📄 Usar o nome do PDF: ' + escapeHtml(nomeServicoCurto_(servicoPdf)) + '</option>');
+    ops.push('<option value="__nao"' + (v === "__nao" ? ' selected' : '') + '>🚫 Não lançar este serviço</option>');
+    return ops.join("");
+  }
+  function opcoesFuncionarioMinha_(v) {
+    return '<option value=""' + (v ? '' : ' selected') + '>— quem é? —</option>' +
+      currentFuncionarios.map(function (f) {
+        return '<option value="' + escapeHtml(f.nome) + '"' + (v === f.nome ? ' selected' : '') + '>' + escapeHtml(f.nome) + '</option>';
+      }).join("") +
+      '<option value="__nao"' + (v === "__nao" ? ' selected' : '') + '>🚫 Não lançar</option>';
+  }
+  function tagOrigem_(origem, falta) {
+    if (falta) return '<span class="imp-tag falta">escolha</span>';
+    if (origem === "lembrado") return '<span class="imp-tag lembrado">lembrado</span>';
+    if (origem) return '<span class="imp-tag sugestao">' + escapeHtml(origem) + '</span>';
+    return '';
+  }
+  function renderPreviewMinha_() {
+    var p = minhaPreview, el = document.getElementById("minha-preview");
+    if (!p) { el.style.display = "none"; return; }
+    var box = el.closest(".modal-box"), rolagem = box ? box.scrollTop : 0;
+    var plano = planoMinha_();
+    var html = '<div class="imp-sec" style="margin-top:12px;">' +
+      '<div style="font-size:14px;font-weight:700;">' + p.blocos.length + ' OS' + (plano.ini ? ' · ' + fmtDate(plano.ini).slice(0, 5) + (plano.fim !== plano.ini ? ' a ' + fmtDate(plano.fim).slice(0, 5) : '') : '') + '</div>' +
+      '<div style="font-size:12px;margin-top:2px;">' + p.nEscalas + ' escala' + (p.nEscalas === 1 ? '' : 's') + ' de funcionário' +
+        (p.totalInformado ? (p.totalInformado === p.nEscalas ? ' <span style="color:#28603C;font-weight:600;">✓ bate com o total do PDF</span>'
+                                                             : ' <span style="color:#B4442E;font-weight:700;">⚠ o PDF informa ' + p.totalInformado + '</span>') : '') + '</div>' +
+      '<div class="hint">' + (p.supervisor ? 'Supervisor: ' + escapeHtml(nomeProprio_(p.supervisor)) : '') +
+        (p.encarregados.length ? ' · Encarregado' + (p.encarregados.length > 1 ? 's' : '') + ': ' + escapeHtml(p.encarregados.map(primeiroNome_).join(", ")) : '') +
+        (p.arquivo ? ' · ' + escapeHtml(p.arquivo) : '') + '</div>' +
+      (p.supAnterior ? '<div class="imp-aviso">⚠ Essas OS são de <b>' + escapeHtml(nomeProprio_(p.supervisor)) + '</b>; a última que você importou era de ' +
+        escapeHtml(nomeProprio_(p.supAnterior)) + '. Confere se é mesmo a sua programação.</div>' : '') +
+    '</div>';
+
+    // 1) serviço → atividade
+    html += '<div class="imp-sec"><div class="imp-tit">1 · Qual atividade do app é cada serviço</div>';
+    p.servicos.forEach(function (s) {
+      var v = p.escolhaServ[s.chave] || "";
+      var obj = v && v !== "__nao" && v !== "__pdf" ? getAtividadeObj(v) : null;
+      var como = !v ? '' : (v === "__nao" ? 'Não entra na grade.'
+        : (temRendimento(obj) ? '⏱ Duração pela área (rendimento: ' + obj.rendimentoPessoas + ' pessoa(s) fazem ' + obj.rendimentoHa + ' ha/dia).'
+                              : '⏱ Sem rendimento: o dia de cada pessoa é dividido entre as OS dela.'));
+      html += '<div class="imp-linha">' +
+        '<div class="imp-pdf">' + escapeHtml(nomeServicoCurto_(s.servico) || "(sem serviço)") + tagOrigem_(p.origemServ[s.chave], !v) + '</div>' +
+        (s.obs ? '<div class="imp-sub">“' + escapeHtml(s.obs) + '”</div>' : '') +
+        '<div class="imp-sub">' + s.nOS + ' OS</div>' +
+        '<select data-minha-serv="' + escapeHtml(s.chave) + '"' + (v ? '' : ' class="falta"') + '>' + opcoesAtividadeMinha_(v, s.servico) + '</select>' +
+        (como ? '<div class="imp-sub">' + como + '</div>' : '') +
+      '</div>';
+    });
+    html += '</div>';
+
+    // 2) nome do PDF → funcionário
+    html += '<div class="imp-sec"><div class="imp-tit">2 · Quem é quem no app</div>';
+    p.pessoas.forEach(function (pe) {
+      var v = p.escolhaPess[pe.chave] || "";
+      html += '<div class="imp-linha" style="display:flex;align-items:center;gap:8px;">' +
+        '<div style="flex:1;min-width:0;"><div class="imp-pdf">' + escapeHtml(nomeProprio_(pe.nome)) + '</div>' +
+          '<div class="imp-sub">' + pe.nOS + ' OS' + tagOrigem_(p.origemPess[pe.chave], !v) + '</div></div>' +
+        '<select data-minha-pess="' + escapeHtml(pe.chave) + '" style="width:46%;margin-top:0;"' + (v ? '' : ' class="falta"') + '>' + opcoesFuncionarioMinha_(v) + '</select>' +
+      '</div>';
+    });
+    html += '</div>';
+
+    // 3) o que vai entrar, dia a dia
+    var porDia = {}, diasOrd = [];
+    plano.itens.forEach(function (it) {
+      var d = porDia[it.data];
+      if (!d) { d = porDia[it.data] = { os: {}, ordem: [], n: 0, pessoas: {} }; diasOrd.push(it.data); }
+      var k = it.os + "|" + it.ordem, o = d.os[k];
+      if (!o) { o = d.os[k] = { b: it.b, setor: it.setor, atividade: it.atividade, itens: [] }; d.ordem.push(k); }
+      o.itens.push(it);
+      if (!it.pendente && !it.jaLancada) { d.n++; d.pessoas[it.func] = true; }
+    });
+    diasOrd.sort();
+    html += '<div class="imp-sec"><div class="imp-tit">3 · O que vai entrar na grade</div>';
+    if (!diasOrd.length) html += '<div class="hint">Nada (tudo marcado pra não lançar).</div>';
+    diasOrd.forEach(function (d) {
+      var info = porDia[d], dt = new Date(d + "T00:00:00"), nP = Object.keys(info.pessoas).length;
+      html += '<details class="imp-dia"><summary>' + NOMES_DIA_SEMANA[dt.getDay()] + ' ' + fmtDate(d).slice(0, 5) + ' — ' +
+        info.n + ' atividade' + (info.n === 1 ? '' : 's') + (nP ? ' · ' + nP + ' pessoa' + (nP === 1 ? '' : 's') : '') + '</summary>';
+      info.ordem.forEach(function (k) {
+        var o = info.os[k], validos = o.itens.filter(function (it) { return !it.pendente && !it.jaLancada; });
+        var mesmoHorario = validos.length && validos.every(function (it) { return it.ini === validos[0].ini && it.fim === validos[0].fim; });
+        var nomes = o.itens.map(function (it) {
+          var n = it.func ? it.func : primeiroNome_(it.nomePdf) + '?';
+          if (it.jaLancada) return '<s>' + escapeHtml(n) + '</s>';
+          return '<span style="white-space:nowrap;">' + escapeHtml(n) + (!it.pendente && !mesmoHorario ? ' <span style="color:#6B6153;">' + it.ini + '–' + it.fim + '</span>' : '') + '</span>';
+        }).join(", ");
+        html += '<div class="imp-os"><b>' + escapeHtml(o.setor || "(sem setor)") + '</b> · ' + escapeHtml(o.atividade || "?") +
+          ' <span style="color:#8A8072;">OS ' + escapeHtml(o.b.os) + (validos.length && validos[0].area ? ' · ' + String(validos[0].area).replace(".", ",") + ' ha' : '') + '</span><br>' +
+          nomes + (mesmoHorario ? ' · <span style="color:#4A4136;font-family:\'IBM Plex Mono\',monospace;font-size:10.5px;">' + validos[0].ini + '–' + validos[0].fim + '</span>' : '') +
+        '</div>';
+      });
+      html += '</details>';
+    });
+    html += '</div>';
+
+    // avisos
+    var avisos = [];
+    if (plano.jaLancadas) avisos.push('↺ ' + plano.jaLancadas + ' já estava' + (plano.jaLancadas === 1 ? '' : 'm') + ' na grade (mesma OS, pessoa e dia) — não ' + (plano.jaLancadas === 1 ? 'vai' : 'vão') + ' de novo.');
+    function porPessoa_(lista, comExcesso) {
+      var m = {}, ordem = [];
+      lista.forEach(function (a) { if (!m[a.func]) { m[a.func] = []; ordem.push(a.func); } m[a.func].push(a); });
+      return ordem.map(function (f) {
+        return escapeHtml(f) + ' (' + m[f].map(function (a) { return fmtDate(a.data).slice(0, 5) + (comExcesso ? ' +' + formatMin(a.excesso) : ''); }).join(", ") + ')';
+      }).join("; ");
+    }
+    var comExist = plano.avisosDia.filter(function (a) { return a.existentes; });
+    if (comExist.length) avisos.push('Já tinham atividade lançada: ' + porPessoa_(comExist, false) + '. As do PDF entram depois delas.');
+    var excesso = plano.avisosDia.filter(function (a) { return a.excesso > 0; });
+    if (excesso.length) avisos.push('⚠ Passa do expediente: ' + porPessoa_(excesso, true) + '.');
+    var setoresConv = [], setoresNovos = [], semEquipe = [];
+    p.blocos.forEach(function (b) {
+      if (!b.pessoas.length) semEquipe.push("OS " + b.os);
+      var s = setorDoApp_(b.setor);
+      if (s.como === "comeco" && setoresConv.indexOf(b.setor + " → " + s.setor) === -1) setoresConv.push(b.setor + " → " + s.setor);
+      if (s.como === "novo" && setoresNovos.indexOf(s.setor) === -1) setoresNovos.push(s.setor);
+    });
+    if (setoresConv.length) avisos.push('Setor: ' + escapeHtml(setoresConv.join(", ")) + ' (o PDF corta o nome).');
+    if (setoresNovos.length) avisos.push('Setor que não está cadastrado no app: ' + escapeHtml(setoresNovos.join(", ")) + ' (vai assim mesmo).');
+    if (semEquipe.length) avisos.push('Sem funcionário no PDF: ' + escapeHtml(semEquipe.join(", ")) + ' — ficou de fora.');
+    var fimSemana = [];
+    plano.novos.forEach(function (it) { var t = fmtDate(it.data).slice(0, 5); if (ehFimDeSemana_(it.data) && fimSemana.indexOf(t) === -1) fimSemana.push(t); });
+    if (fimSemana.length) avisos.push('Tem OS no fim de semana (' + fimSemana.join(", ") + '): aparecem na aba 📅 Dia (a Semana mostra só de segunda a sexta).');
+    var foraP = p.pessoas.filter(function (pe) { return p.escolhaPess[pe.chave] === "__nao"; }).map(function (pe) { return primeiroNome_(pe.nome); });
+    var foraS = p.servicos.filter(function (s) { return p.escolhaServ[s.chave] === "__nao"; }).map(function (s) { return nomeServicoCurto_(s.servico); });
+    if (foraP.length || foraS.length) avisos.push('🚫 Fora da importação: ' + escapeHtml(foraP.concat(foraS).join(", ")) + '.');
+    avisos.forEach(function (a) { html += '<div class="imp-aviso">' + a + '</div>'; });
+
+    var n = plano.novos.length;
+    html += '<button class="save-btn" id="btn-minha-lancar" style="margin-top:12px;"' + (plano.faltam || !n ? ' disabled' : '') + '>' +
+      (plano.faltam ? 'Escolha o que está em vermelho (' + plano.faltam + ')' : (n ? '✅ Lançar ' + n + ' atividade' + (n === 1 ? '' : 's') : 'Nada novo pra lançar')) + '</button>' +
+      '<div class="hint" style="margin-top:6px;">O app guarda suas escolhas: na próxima semana já vem tudo ligado. Dá pra desfazer depois em "Importações feitas".</div>' +
+      (progFilaCompartilhada.length ? '<div class="hint" style="margin-top:6px;">Depois deste, tem mais ' + progFilaCompartilhada.length + ' PDF(s) compartilhado(s).</div>' : '');
+    el.innerHTML = html;
+    el.style.display = "";
+    el.querySelectorAll("[data-minha-serv]").forEach(function (s) {
+      s.addEventListener("change", function () { p.escolhaServ[s.getAttribute("data-minha-serv")] = s.value; p.origemServ[s.getAttribute("data-minha-serv")] = ""; renderPreviewMinha_(); });
+    });
+    el.querySelectorAll("[data-minha-pess]").forEach(function (s) {
+      s.addEventListener("change", function () { p.escolhaPess[s.getAttribute("data-minha-pess")] = s.value; p.origemPess[s.getAttribute("data-minha-pess")] = ""; renderPreviewMinha_(); });
+    });
+    document.getElementById("btn-minha-lancar").addEventListener("click", lancarMinha_);
+    if (box) box.scrollTop = rolagem;
+  }
+
+  function lancarMinha_() {
+    var p = minhaPreview;
+    if (!p) return;
+    var plano = planoMinha_();
+    if (plano.faltam) { showToast("Escolha a atividade / o funcionário que está em vermelho."); return; }
+    if (!plano.novos.length) { showToast("Nada novo pra lançar."); return; }
+    var criados = [];
+    plano.novos.forEach(function (it) {
+      var inicio = getProximoHorarioLivre(it.func, it.data);
+      var r = {
+        id: uid(), data: it.data, funcionario: it.func, atividade: it.atividade, setor: it.setor || "", duracaoMin: it.dur, areaHa: it.area || 0,
+        horarioInicio: inicio, horarioFim: somarComPausa(inicio, it.dur), observacao: (it.obs ? it.obs + " · " : "") + "OS " + it.os,
+        concluida: false, _synced: false, _pendingDelete: false
+      };
+      registros.unshift(r);
+      criados.push(r.id);
+    });
+    saveRegistros();
+    // lembra as escolhas pra próxima semana
+    var mapa = loadMinhaMapa_();
+    p.servicos.forEach(function (s) { var v = p.escolhaServ[s.chave]; if (v) { mapa.serv[s.chave] = v; mapa.servSo[s.chave.split("|")[0]] = v; } });
+    p.pessoas.forEach(function (pe) { var v = p.escolhaPess[pe.chave]; if (v) mapa.pess[pe.chave] = v; });
+    if (p.supervisor) mapa.sup = p.supervisor;
+    saveMinhaMapa_(mapa);
+    var hist = loadMinhaHist_();
+    hist.unshift({ id: uid(), arquivo: p.arquivo, quando: new Date().toISOString(), ini: plano.ini, fim: plano.fim, ids: criados });
+    saveMinhaHist_(hist.slice(0, 12));
+
+    var temMais = progFilaCompartilhada.length > 0;
+    minhaPreview = null;
+    if (!temMais) document.getElementById("modal-minha-overlay").classList.remove("active");
+    visaoAtual = "semana";
+    diaSelecionado = plano.novos.reduce(function (a, it) { return it.data < a ? it.data : a; }, plano.novos[0].data);
+    renderContent();
+    showToast(criados.length + " atividade" + (criados.length === 1 ? "" : "s") + " lançada" + (criados.length === 1 ? "" : "s") +
+      (plano.ini ? " (" + fmtDate(plano.ini).slice(0, 5) + (plano.fim !== plano.ini ? " a " + fmtDate(plano.fim).slice(0, 5) : "") + ")" : "") + ".");
+    trySync();
+    if (temMais) setTimeout(proximoPdfCompartilhado_, 300);
+  }
+
+  // ---- Importações feitas (pra desfazer de uma vez) ----
+  function fmtQuando_(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + " " +
+      String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
+  function renderHistMinha_() {
+    var wrap = document.getElementById("minha-hist-wrap"), el = document.getElementById("minha-hist");
+    var vivos = loadMinhaHist_().map(function (h) {
+      return { h: h, regs: registros.filter(function (r) { return !r._pendingDelete && h.ids.indexOf(r.id) > -1; }) };
+    }).filter(function (x) { return x.regs.length; });
+    if (!vivos.length) { wrap.style.display = "none"; el.innerHTML = ""; return; }
+    wrap.style.display = "";
+    el.innerHTML = vivos.map(function (x) {
+      var h = x.h, n = x.regs.length, nServ = x.regs.filter(function (r) { return r._synced; }).length;
+      return '<div style="border-top:1px solid #EFEAD9;padding:8px 0;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">' +
+          '<div><div style="font-size:13px;font-weight:700;">' + fmtDate(h.ini).slice(0, 5) + (h.fim && h.fim !== h.ini ? ' a ' + fmtDate(h.fim).slice(0, 5) : '') +
+            ' · ' + n + ' atividade' + (n === 1 ? '' : 's') + '</div>' +
+          '<div class="hint" style="margin-top:1px;">' + escapeHtml(h.arquivo || "PDF") + ' · importado em ' + fmtQuando_(h.quando) + '</div></div>' +
+          '<button class="del-btn" data-desf-abrir="' + escapeHtml(h.id) + '" style="font-size:12.5px;color:#B4442E;font-weight:700;white-space:nowrap;">↩ Desfazer</button>' +
+        '</div>' +
+        '<div data-desf-box="' + escapeHtml(h.id) + '" style="display:none;margin-top:8px;background:#FBEDE8;border-radius:5px;padding:9px 10px;">' +
+          '<div style="font-size:12px;line-height:1.4;">Apaga as <b>' + n + '</b> atividade' + (n === 1 ? '' : 's') + ' que esse PDF lançou (mesmo se você editou depois).' +
+            (nServ ? ' ' + nServ + ' já ' + (nServ === 1 ? 'foi' : 'foram') + ' pra planilha: precisa da senha de administrador e de internet.' : '') + '</div>' +
+          (nServ ? '<input type="password" data-desf-senha="' + escapeHtml(h.id) + '" placeholder="Senha de administrador" style="width:100%;margin-top:8px;border:1px solid #D2C7AB;background:#FBF8F1;border-radius:3px;padding:9px;font-size:14px;">' : '') +
+          '<button class="save-btn" data-desf-ok="' + escapeHtml(h.id) + '" style="background:#B4442E;margin-top:8px;">Apagar ' + n + ' atividade' + (n === 1 ? '' : 's') + '</button>' +
+          '<div data-desf-res="' + escapeHtml(h.id) + '" class="hint" style="margin-top:6px;"></div>' +
+        '</div></div>';
+    }).join("");
+    el.querySelectorAll("[data-desf-abrir]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var caixa = el.querySelector('[data-desf-box="' + b.getAttribute("data-desf-abrir") + '"]');
+        caixa.style.display = caixa.style.display === "none" ? "" : "none";
+        var s = caixa.querySelector("[data-desf-senha]");
+        if (s && !s.value) s.value = adminPassSessao;
+      });
+    });
+    el.querySelectorAll("[data-desf-ok]").forEach(function (b) {
+      b.addEventListener("click", function () { desfazerImportacao_(b.getAttribute("data-desf-ok")); });
+    });
+  }
+  function desfazerImportacao_(hid) {
+    var hist = loadMinhaHist_(), h = hist.filter(function (x) { return x.id === hid; })[0];
+    var el = document.getElementById("minha-hist");
+    var res = el.querySelector('[data-desf-res="' + hid + '"]'), botao = el.querySelector('[data-desf-ok="' + hid + '"]');
+    function msg(t, erro) { if (res) { res.textContent = t; res.style.color = erro ? "#B4442E" : "#4A4136"; res.style.fontWeight = erro ? "700" : "400"; } }
+    if (!h || desfazendoImport) return;
+    if (syncing) { msg("Espere terminar de sincronizar (bolinha azul lá em cima) e tente de novo.", true); return; }
+    var alvo = registros.filter(function (r) { return h.ids.indexOf(r.id) > -1; });
+    var noServidor = alvo.filter(function (r) { return r._synced; });
+    var inp = el.querySelector('[data-desf-senha="' + hid + '"]');
+    var pass = inp ? inp.value.trim() : "";
+    if (noServidor.length) {
+      if (!config.url) { msg("Configure a sincronização primeiro.", true); return; }
+      if (!pass) { msg("Digite a senha de administrador.", true); return; }
+      if (!navigator.onLine) { msg("Precisa de internet.", true); return; }
+    }
+    var afetados = {};
+    alvo.forEach(function (r) { afetados[r.funcionario + "|" + r.data] = true; });
+    function tirar_(id) { marcarApagado_(id); registros = registros.filter(function (r) { return r.id !== id; }); }
+    alvo.filter(function (r) { return !r._synced; }).forEach(function (r) { tirar_(r.id); });
+    saveRegistros();
+    desfazendoImport = true;
+    if (botao) botao.disabled = true;
+    var feitos = alvo.length - noServidor.length, erro = "", chain = Promise.resolve();
+    // um por vez (vários pedidos juntos o Apps Script recusa)
+    noServidor.forEach(function (r) {
+      chain = chain.then(function () {
+        if (erro) return;
+        msg("Apagando na planilha... " + (feitos + 1) + " de " + alvo.length);
+        return postToBackend({ action: "delete_atividade_prog", adminToken: pass, id: r.id }).then(function (resp) {
+          if (resp && resp.ok) { tirar_(r.id); feitos++; saveRegistros(); }
+          else erro = (resp && resp.error) || "não consegui apagar";
+        }).catch(function (e) { erro = "erro de conexão" + (e && e.message ? " (" + e.message + ")" : ""); });
+      });
+    });
+    chain.then(function () {
+      desfazendoImport = false;
+      if (!erro && noServidor.length) adminPassSessao = pass;
+      Object.keys(afetados).forEach(function (k) { recalcularCascata(k.slice(0, -11), k.slice(-10)); });
+      h.ids = h.ids.filter(function (id) { return registros.some(function (r) { return r.id === id; }); });
+      saveMinhaHist_(hist.filter(function (x) { return x.ids.length; }));
+      renderHistMinha_();
+      if (minhaPreview) renderPreviewMinha_();
+      renderContent();
+      var texto = erro ? "Parou no meio: " + erro + ". Apagada(s): " + feitos + " de " + alvo.length + "."
+                       : feitos + " atividade" + (feitos === 1 ? "" : "s") + " apagada" + (feitos === 1 ? "" : "s") + ".";
+      var st = document.getElementById("minha-status");
+      st.innerHTML = erro ? '<span style="color:#B4442E;font-weight:700;">⚠ ' + escapeHtml(texto) + '</span>' : escapeHtml("↩ Importação desfeita: " + texto);
+      showToast(texto);
+      trySync();
+    });
+  }
+
   // ---- Detalhe de um dia (toque na linha "Outras equipes" da semana) ----
   function abrirProgDia_(dataISO) {
     var mapa = progDoDia_(dataISO);
@@ -3402,7 +4124,7 @@
   var ultimoErroSync = "";
 
   function trySync(manual) {
-    if (!config.url || !config.token || !navigator.onLine || syncing) { refreshSyncPill(); return Promise.resolve(); }
+    if (!config.url || !config.token || !navigator.onLine || syncing || desfazendoImport) { refreshSyncPill(); return Promise.resolve(); }
     syncing = true; refreshSyncPill();
     var chain = Promise.resolve();
     var errosSync = [];
@@ -3889,6 +4611,14 @@
     document.getElementById("prog-arquivo").addEventListener("change", function (e) {
       var f = e.target.files && e.target.files[0];
       if (f) importarPdfProg_(f);
+    });
+    // Minha programação (PDF das Ordens de Serviço da equipe)
+    document.getElementById("btn-close-minha").addEventListener("click", fecharModalMinha_);
+    document.getElementById("modal-minha-overlay").addEventListener("click", function (e) { if (e.target.id === "modal-minha-overlay") fecharModalMinha_(); });
+    document.getElementById("btn-minha-escolher").addEventListener("click", function () { document.getElementById("minha-arquivo").click(); });
+    document.getElementById("minha-arquivo").addEventListener("change", function (e) {
+      var f = e.target.files && e.target.files[0];
+      if (f) importarMinhaPdf_(f);
     });
     document.getElementById("btn-close-progdia").addEventListener("click", function () { document.getElementById("modal-progdia-overlay").classList.remove("active"); });
     document.getElementById("modal-progdia-overlay").addEventListener("click", function (e) {
