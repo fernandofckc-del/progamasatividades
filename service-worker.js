@@ -1,4 +1,4 @@
-var CACHE_NAME = 'prog-atividades-app-v9';
+var CACHE_NAME = 'prog-atividades-app-v10';
 var ASSETS = [
   './',
   './index.html',

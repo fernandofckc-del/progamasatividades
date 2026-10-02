@@ -109,6 +109,21 @@
   /* Grade da semana: coluna do funcionário fica parada ao rolar pro lado */
   .sem-func { position:sticky; left:0; z-index:2; box-shadow:2px 0 3px rgba(0,0,0,.06); }
   .sem-hoje { background:#DCEBD0; border-radius:4px; }
+
+  /* Escolha rápida por toque (equipe, motivo, sim/não...) */
+  .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip { border:1px solid #D2C7AB; background:#FBF8F1; color:#4A4136; border-radius:16px; padding:8px 12px; font-size:12.5px; cursor:pointer; line-height:1.2; text-align:left; }
+  .chip.on { background:#B4442E; border-color:#B4442E; color:#fff; font-weight:600; }
+  .hint { font-size:11px; color:#6B6153; margin-top:3px; line-height:1.35; }
+
+  /* Atividade impedida por outra equipe */
+  .bloco.impedida { background:#F8E1DA; border:1px solid #E0A493; }
+  .imped-tag { display:flex; align-items:center; gap:6px; background:#B4442E; color:#fff; font-size:11px; font-weight:700; border-radius:4px; padding:5px 8px; margin-top:6px; cursor:pointer; line-height:1.3; }
+  .bloco-acoes { display:flex; gap:2px; justify-content:flex-end; margin-top:4px; }
+  .bloco-acoes .del-btn { font-size:17px; padding:4px 7px; }
+  .imped-item { border-top:1px solid #EFE2DC; padding:9px 0; cursor:pointer; }
+  .imped-item:first-of-type { border-top:none; }
+  .imped-badge { display:inline-block; font-size:10px; font-weight:700; border-radius:10px; padding:2px 7px; margin:3px 4px 0 0; }
 </style>
 </head>
 <body>
@@ -119,7 +134,7 @@
       <div>
         <div class="plate-label">CONTROLE DE CAMPO</div>
         <div class="plate-title">PROGRAMAÇÃO DE ATIVIDADES</div>
-        <div style="font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:#CFE0BB; margin-top:2px;" id="app-version">v1.1</div>
+        <div style="font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:#CFE0BB; margin-top:2px;" id="app-version">v1.2</div>
       </div>
       <button class="gear-btn" id="btn-open-config">⚙️</button>
     </div>
@@ -187,6 +202,14 @@
     <div class="field"><span class="field-label">Lista de setores</span><textarea id="admin-setores-ativ" style="min-height:90px;" placeholder="Carregando..."></textarea></div>
     <button class="photo-btn" id="btn-save-setores-ativ" style="background:#8A5A44">Salvar Setores</button>
     <div id="admin-setores-ativ-result" class="test-result"></div>
+
+    <hr style="margin:22px 0; border:none; border-top:1px dashed #D2C7AB;">
+
+    <div class="modal-title" style="font-size:15px;">🔒 Outras equipes da fazenda (administrador)</div>
+    <div class="modal-sub">Uma por linha. São as opções que aparecem quando você registra um impedimento ⛔ (ex.: Pulverização, Colheita, Adubação).</div>
+    <div class="field"><span class="field-label">Lista de equipes</span><textarea id="admin-equipes-externas" style="min-height:90px;" placeholder="Carregando..."></textarea></div>
+    <button class="photo-btn" id="btn-save-equipes-externas" style="background:#8A5A44">Salvar Equipes</button>
+    <div id="admin-equipes-externas-result" class="test-result"></div>
   </div>
 </div>
 
@@ -321,6 +344,78 @@
   </div>
 </div>
 
+<!-- MODAL DE IMPEDIMENTO POR OUTRA EQUIPE -->
+<div class="modal-overlay" id="modal-imped-overlay">
+  <div class="modal-box">
+    <button class="modal-close" id="btn-close-imped">✕</button>
+    <div class="modal-title" id="imped-titulo">⛔ Impedida por outra equipe</div>
+    <div class="modal-sub" id="imped-resumo">—</div>
+
+    <!-- Só aparece quando registra sem tocar numa atividade da grade -->
+    <div id="imped-sem-bloco" style="display:none;">
+      <div style="display:flex;gap:8px;">
+        <div class="field" style="flex:1;"><span class="field-label">Data</span><input id="imped-data" type="date"></div>
+        <div class="field" style="flex:1;"><span class="field-label">Setor</span><input id="imped-setor" list="ativ-setor-lista" placeholder="Ex.: TA1" autocomplete="off"></div>
+      </div>
+      <div class="field"><span class="field-label">Atividade que vocês iam fazer</span><select id="imped-atividade"></select></div>
+    </div>
+
+    <div class="field">
+      <span class="field-label">Quem ficou sem poder fazer</span>
+      <div id="imped-funcionarios" style="border:1px solid #D2C7AB; background:#FBF8F1; border-radius:3px; padding:4px 10px;"></div>
+    </div>
+    <div class="field">
+      <span class="field-label">Qual equipe atrapalhou?</span>
+      <div class="chips" id="imped-equipe-chips"></div>
+      <input id="imped-equipe-outra" type="text" placeholder="Nome da equipe" style="margin-top:6px;display:none;">
+    </div>
+    <div class="field">
+      <span class="field-label">O que aconteceu?</span>
+      <div class="chips" id="imped-motivo-chips"></div>
+    </div>
+    <div class="field">
+      <span class="field-label">O que eles estavam fazendo? (opcional)</span>
+      <input id="imped-oque" type="text" placeholder="Ex.: aplicação de herbicida, colheita, gradagem">
+    </div>
+    <div class="field">
+      <span class="field-label">Estava na programação deles?</span>
+      <div class="chips" id="imped-programado-chips"></div>
+    </div>
+    <div class="field">
+      <span class="field-label">Avisaram antes?</span>
+      <div class="chips" id="imped-avisaram-chips"></div>
+    </div>
+    <div class="field">
+      <span class="field-label">Tempo perdido (por pessoa)</span>
+      <input id="imped-minutos" type="time" step="60" value="01:00">
+      <div class="hint" id="imped-hh"></div>
+    </div>
+    <div class="field">
+      <span class="field-label">Área vai continuar ocupada até (opcional)</span>
+      <input id="imped-ocupada-ate" type="date">
+      <div class="hint">Ex.: reentrada depois de aplicação, colheita que vai até sexta. O app avisa se você programar esse setor antes dessa data.</div>
+    </div>
+    <div class="field" id="imped-remarcar-wrap">
+      <span class="field-label">Remarcar a atividade?</span>
+      <div class="chips" id="imped-remarcar-chips"></div>
+      <input id="imped-remarcar-data" type="date" style="margin-top:6px;display:none;">
+      <div class="hint" id="imped-remarcar-hint"></div>
+    </div>
+    <div class="hint" id="imped-ja-remarcada" style="display:none;margin-bottom:12px;font-size:12px;"></div>
+    <div class="field">
+      <span class="field-label">Observação (opcional)</span>
+      <textarea id="imped-obs" placeholder="Ex.: encarregado deles disse que mudaram a programação de manhã"></textarea>
+    </div>
+    <button class="save-btn" id="btn-save-imped" style="background:#B4442E;">Registrar impedimento</button>
+
+    <div id="imped-excluir-wrap" style="display:none;margin-top:16px;border-top:1px dashed #D2C7AB;padding-top:12px;">
+      <div class="field" id="imped-del-pass-wrap"><span class="field-label">Senha de administrador (pra excluir)</span><input id="imped-del-pass" type="password"></div>
+      <button class="photo-btn" id="btn-del-imped" style="background:#8A8072;">🗑 Excluir este registro</button>
+      <div id="imped-del-result" class="test-result"></div>
+    </div>
+  </div>
+</div>
+
 <script>
 (function () {
   "use strict";
@@ -427,6 +522,24 @@
   var TALHOES_CACHE_KEY = "prog_ativ_talhoes_cache_v1";
   var CULTURAS_MANUT_CACHE_KEY = "prog_ativ_culturas_manut_cache_v1";
   var MANUT_CACHE_KEY = "prog_ativ_manut_cache_v1";
+
+  // Impedimentos: quando uma atividade da nossa equipe não pôde ser feita
+  // porque OUTRA equipe da fazenda entrou na área (fora da programação dela,
+  // sem avisar etc.). Fica numa aba própria da planilha.
+  var IMPED_KEY = "prog_ativ_impedimentos_v1";
+  var EQUIPES_EXT_CACHE_KEY = "prog_ativ_equipes_externas_v1";
+  var impedimentos = [];
+  var equipesExternas = ["Pulverização", "Colheita", "Adubação", "Roçagem / Capina", "Poda", "Mecanização / Trator"];
+  var MOTIVOS_IMPED = [
+    "Estavam trabalhando na área",
+    "Pediram pra parar/desligar a irrigação",
+    "Danificaram o sistema (tivemos que consertar)",
+    "Outro motivo"
+  ];
+  var impedBackendOk = true; // vira false se o Apps Script ainda não tiver o arquivo Impedimentos.gs
+  var avisouBackendImped = false;
+  var ultimaRespostaImped = "";
+
   var diaSelecionado = todayStr();
   var visaoAtual = "dia"; // "dia", "semana" ou "painel"
   var painelDataInicio = null; // definido no init (segunda da semana atual)
@@ -595,6 +708,98 @@
     return sinal + h + "h" + (m ? String(m).padStart(2, "0") + "min" : "");
   }
 
+  // ================= IMPEDIMENTOS (dados) =================
+  function loadImpedimentos_() {
+    try {
+      var raw = localStorage.getItem(IMPED_KEY);
+      impedimentos = raw ? JSON.parse(raw) : [];
+    } catch (e) { impedimentos = []; }
+    try {
+      var eq = localStorage.getItem(EQUIPES_EXT_CACHE_KEY);
+      if (eq) { var l = JSON.parse(eq); if (l && l.length) equipesExternas = l; }
+    } catch (e) {}
+  }
+  function saveImpedimentos_() {
+    try { localStorage.setItem(IMPED_KEY, JSON.stringify(impedimentos)); return true; }
+    catch (e) { showToast("Armazenamento cheio."); return false; }
+  }
+  function normSetor_(s) { return String(s || "").trim().toUpperCase(); }
+  function splitSetores_(txt) {
+    return String(txt || "").split(",").map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+  }
+  // { idDoBloco: impedimento } - a marca só vale no dia em que aconteceu
+  // (se o bloco for movido pra outro dia depois, não arrasta o ⛔ junto).
+  function mapaImpedimentos_() {
+    var mapa = {};
+    impedimentos.forEach(function (im) {
+      (im.atividadeIds || []).forEach(function (bid) { mapa[bid] = im; });
+    });
+    return mapa;
+  }
+  function impedDoBloco_(r, mapa) {
+    var im = (mapa || mapaImpedimentos_())[r.id];
+    return (im && im.data === r.data) ? im : null;
+  }
+  // Setor ocupado por outra equipe nesse dia (do dia do registro até a
+  // data "ocupada até"). Devolve o registro que vai mais longe.
+  function ocupacaoDoSetor_(setor, dataISO) {
+    if (!setor || !dataISO) return null;
+    var alvo = normSetor_(setor), achado = null;
+    impedimentos.forEach(function (im) {
+      if (!im.areaOcupadaAte || dataISO < im.data || dataISO > im.areaOcupadaAte) return;
+      var bate = splitSetores_(im.setor).some(function (s) { return normSetor_(s) === alvo; });
+      if (bate && (!achado || im.areaOcupadaAte > achado.areaOcupadaAte)) achado = im;
+    });
+    return achado;
+  }
+  function textoOcupacao_(setor, im) {
+    return setor + " ocupado por " + im.equipe + " até " + fmtDate(im.areaOcupadaAte).slice(0, 5);
+  }
+  // Blocos da mesma atividade no mesmo dia/setor = a turma que foi junto
+  function grupoDoBloco_(r) {
+    return registros.filter(function (x) {
+      return !x._pendingDelete && x.data === r.data && x.atividade === r.atividade && (x.setor || "") === (r.setor || "");
+    });
+  }
+  function horasHomemMin_(im) { return (im.minutos || 0) * ((im.funcionarios || []).length || 0); }
+  function impedParaEnvio_(im) {
+    var out = {};
+    Object.keys(im).forEach(function (k) { if (k.charAt(0) !== "_") out[k] = im[k]; });
+    return out;
+  }
+  var CAMPOS_IMPED_ = ["data", "setor", "equipe", "motivo", "oQueFaziam", "estavaProgramado", "avisaram", "atividade",
+    "funcionarios", "minutos", "areaOcupadaAte", "remarcadaPara", "observacao", "atividadeIds", "criadoEm"];
+  // Servidor é a fonte da verdade pro que já subiu; o que ainda está só no
+  // celular (ou foi mexido e não subiu) nunca é sobrescrito nem apagado.
+  function mesclarImpedimentosDoServidor_(lista) {
+    var doServidor = {};
+    lista.forEach(function (row) { if (row && row.id) doServidor[row.id] = row; });
+    var localPorId = {};
+    impedimentos.forEach(function (im) { localPorId[im.id] = im; });
+    Object.keys(doServidor).forEach(function (id) {
+      if (impedTombstones[id]) return;
+      var row = doServidor[id], campos = {};
+      CAMPOS_IMPED_.forEach(function (c) { if (row[c] !== undefined) campos[c] = row[c]; });
+      campos.funcionarios = Array.isArray(campos.funcionarios) ? campos.funcionarios : [];
+      campos.atividadeIds = Array.isArray(campos.atividadeIds) ? campos.atividadeIds : [];
+      campos.minutos = parseInt(campos.minutos, 10) || 0;
+      var loc = localPorId[id];
+      if (loc) {
+        if (loc._synced && !loc._pendingUpdate) Object.assign(loc, campos);
+      } else {
+        impedimentos.push(Object.assign({ id: id, _synced: true, _pendingUpdate: false, _rev: 0 }, campos));
+      }
+    });
+    // excluído em outro aparelho: some daqui também
+    impedimentos = impedimentos.filter(function (im) { return !im._synced || im._pendingUpdate || doServidor[im.id]; });
+    saveImpedimentos_();
+  }
+  var REMARCADA_TAG_RE = /\s*(·\s*)?↪ Remarcada de \d{2}\/\d{2} \([^)]*\)/g;
+  function tagRemarcada_(dataOrigem, equipe) {
+    return "↪ Remarcada de " + fmtDate(dataOrigem).slice(0, 5) + " (impedida: " + String(equipe || "").replace(/[()]/g, "") + ")";
+  }
+  function limparTagRemarcada_(obs) { return String(obs || "").replace(REMARCADA_TAG_RE, "").trim(); }
+
   function postToBackend(payload) {
     return fetch(config.url, {
       method: "POST",
@@ -715,6 +920,7 @@
     }
 
     html += '<div class="list">';
+    var mapaImped = mapaImpedimentos_();
     currentFuncionarios.forEach(function (funcObj) {
       var func = funcObj.nome;
       var blocos = getRegistrosDia(func, diaSelecionado);
@@ -729,19 +935,23 @@
         html += '<div style="font-size:12px;color:#8A8072;">Nenhuma atividade hoje.</div>';
       } else {
         blocos.forEach(function (r) {
-          html += '<div class="bloco" style="' + (r.concluida ? "opacity:.65;" : "") + '">' +
+          var im = impedDoBloco_(r, mapaImped);
+          html += '<div class="bloco' + (im ? " impedida" : "") + '" style="' + (r.concluida ? "opacity:.65;" : "") + '">' +
             '<div class="bloco-top">' +
-              '<span class="bloco-atividade" style="' + (r.concluida ? "text-decoration:line-through;" : "") + '">' + escapeHtml(r.atividade) + (r.setor ? ' <span style="font-weight:400;color:#6B6153;">· ' + escapeHtml(r.setor) + '</span>' : '') + '</span>' +
-              '<span style="display:flex;gap:8px;align-items:center;">' +
-                '<span class="bloco-horario">' + escapeHtml(r.horarioInicio) + '–' + escapeHtml(r.horarioFim) + '</span>' +
-                '<button class="del-btn" data-toggle-concluida="' + r.id + '" title="' + (r.concluida ? "Marcar como pendente" : "Marcar como concluída") + '">' + (r.concluida ? "✅" : "⬜") + '</button>' +
-                '<button class="del-btn" data-dup-ativ="' + r.id + '" title="Duplicar">📋</button>' +
-                '<button class="del-btn" data-edit-ativ="' + r.id + '" title="Editar">✏️</button>' +
-                '<button class="del-btn" data-del-ativ="' + r.id + '" title="Excluir">🗑</button>' +
-              '</span>' +
+              '<span class="bloco-atividade" style="' + (r.concluida || im ? "text-decoration:line-through;" : "") + '">' + escapeHtml(r.atividade) + (r.setor ? ' <span style="font-weight:400;color:#6B6153;">· ' + escapeHtml(r.setor) + '</span>' : '') + '</span>' +
+              '<span class="bloco-horario">' + escapeHtml(r.horarioInicio) + '–' + escapeHtml(r.horarioFim) + '</span>' +
             '</div>' +
             (r.areaHa ? '<div class="bloco-obs">🌱 ' + r.areaHa + ' ha</div>' : '') +
             (r.observacao ? '<div class="bloco-obs">📝 ' + escapeHtml(r.observacao) + '</div>' : '') +
+            (im ? '<div class="imped-tag" data-ver-imped="' + im.id + '">⛔ Impedida · ' + escapeHtml(im.equipe) +
+                  (im.remarcadaPara ? ' · remarcada p/ ' + fmtDate(im.remarcadaPara).slice(0, 5) : ' · não remarcada') + '</div>' : '') +
+            '<div class="bloco-acoes">' +
+              '<button class="del-btn" data-toggle-concluida="' + r.id + '" title="' + (r.concluida ? "Marcar como pendente" : "Marcar como concluída") + '">' + (r.concluida ? "✅" : "⬜") + '</button>' +
+              '<button class="del-btn" data-imped-ativ="' + r.id + '" title="Impedida por outra equipe">⛔</button>' +
+              '<button class="del-btn" data-dup-ativ="' + r.id + '" title="Duplicar">📋</button>' +
+              '<button class="del-btn" data-edit-ativ="' + r.id + '" title="Editar">✏️</button>' +
+              '<button class="del-btn" data-del-ativ="' + r.id + '" title="Excluir">🗑</button>' +
+            '</div>' +
           '</div>';
         });
       }
@@ -749,7 +959,7 @@
       // Planejado: soma da área (ha) de todas as atividades do dia que têm
       // rendimento por hectare configurado - dá pra comparar de relance com
       // o que a pessoa disse que fez de verdade.
-      var planejadoHa = blocos.reduce(function (s, r) { return s + (parseFloat(r.areaHa) || 0); }, 0);
+      var planejadoHa = blocos.reduce(function (s, r) { return impedDoBloco_(r, mapaImped) ? s : s + (parseFloat(r.areaHa) || 0); }, 0);
       html += '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #DCD3BC;">' +
         '<span class="field-label" style="font-size:10px;">Rendimento real do dia (fim de expediente)</span>' +
         (planejadoHa > 0 ? '<div style="font-size:11px;color:#6B6153;margin-top:2px;">Planejado hoje: <b>' + round2Painel_(planejadoHa) + ' ha</b></div>' : '') +
@@ -767,6 +977,12 @@
     });
     el.querySelectorAll("[data-dup-ativ]").forEach(function (b) {
       b.addEventListener("click", function () { abrirModalDuplicar(b.getAttribute("data-dup-ativ")); });
+    });
+    el.querySelectorAll("[data-imped-ativ]").forEach(function (b) {
+      b.addEventListener("click", function () { abrirModalImpedimento(b.getAttribute("data-imped-ativ"), null); });
+    });
+    el.querySelectorAll("[data-ver-imped]").forEach(function (b) {
+      b.addEventListener("click", function () { abrirModalImpedimento(null, b.getAttribute("data-ver-imped")); });
     });
     el.querySelectorAll("[data-edit-ativ]").forEach(function (b) {
       b.addEventListener("click", function () { abrirModalAtividade(b.getAttribute("data-edit-ativ")); });
@@ -853,6 +1069,8 @@
     html += '</tr>';
 
     var atividadesUsadas = {};
+    var mapaImpedSem = mapaImpedimentos_();
+    var teveImpedidaSem = false;
 
     currentFuncionarios.forEach(function (funcObj) {
       var func = funcObj.nome;
@@ -870,15 +1088,20 @@
           html += '<td style="padding:0;min-width:118px;vertical-align:top;">';
           blocos.forEach(function (r) {
             atividadesUsadas[r.atividade] = true;
-            var cor = corDaAtividade_(r.atividade);
+            var im = impedDoBloco_(r, mapaImpedSem);
+            if (im) teveImpedidaSem = true;
+            var cor = im ?{ fundo: "#F8E1DA", borda: "#C9533A" } : corDaAtividade_(r.atividade);
             html += '<div style="background:' + cor.fundo + ';border:1px solid ' + cor.borda + ';border-radius:5px;padding:5px 6px;margin-bottom:3px;font-size:10.5px;' + (r.concluida ? "opacity:.55;" : "") + '">' +
               '<div data-edit-cel="' + r.id + '" style="cursor:pointer;">' +
-                '<div style="font-weight:700;line-height:1.25;' + (r.concluida ? "text-decoration:line-through;" : "") + '">' + (r.concluida ? "✅ " : "") + escapeHtml(r.atividade) + '</div>' +
+                '<div style="font-weight:700;line-height:1.25;' + (r.concluida || im ? "text-decoration:line-through;" : "") + '">' + (r.concluida ? "✅ " : "") + escapeHtml(r.atividade) + '</div>' +
                 (r.setor ? '<div style="font-weight:600;color:#4A4136;">' + escapeHtml(r.setor) + '</div>' : '') +
                 '<div style="color:#5C5445;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;">' + escapeHtml(r.horarioInicio) + '–' + escapeHtml(r.horarioFim) + '</div>' +
               '</div>' +
+              (im ? '<div data-ver-imped="' + im.id + '" style="margin-top:3px;background:#B4442E;color:#fff;border-radius:3px;padding:2px 4px;font-weight:700;font-size:9.5px;cursor:pointer;line-height:1.25;">⛔ ' + escapeHtml(im.equipe) +
+                    (im.remarcadaPara ? ' → ' + fmtDate(im.remarcadaPara).slice(0, 5) : '') + '</div>' : '') +
               '<div style="display:flex;gap:4px;justify-content:flex-end;margin-top:3px;border-top:1px solid rgba(0,0,0,.08);padding-top:3px;">' +
                 '<button data-toggle-cel="' + r.id + '" title="' + (r.concluida ? "Marcar como pendente" : "Marcar como concluída") + '" style="background:none;border:none;font-size:12px;cursor:pointer;padding:0 2px;">' + (r.concluida ? "✅" : "⬜") + '</button>' +
+                '<button data-imped-cel="' + r.id + '" title="Impedida por outra equipe" style="background:none;border:none;font-size:12px;cursor:pointer;padding:0 2px;">⛔</button>' +
                 '<button data-dup-cel="' + r.id + '" title="Duplicar" style="background:none;border:none;font-size:12px;cursor:pointer;padding:0 2px;">📋</button>' +
                 '<button data-edit-cel="' + r.id + '" title="Editar" style="background:none;border:none;font-size:12px;cursor:pointer;padding:0 2px;">✏️</button>' +
                 '<button data-del-cel="' + r.id + '" title="Excluir" style="background:none;border:none;font-size:12px;cursor:pointer;padding:0 2px;">🗑</button>' +
@@ -908,6 +1131,12 @@
           '<span style="font-size:12px;">' + escapeHtml(nome) + '</span>' +
         '</div>';
       });
+      if (teveImpedidaSem) {
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">' +
+          '<span style="width:16px;height:16px;border-radius:4px;background:#F8E1DA;border:1px solid #C9533A;flex-shrink:0;"></span>' +
+          '<span style="font-size:12px;">⛔ Impedida por outra equipe (toque na faixa vermelha pra ver)</span>' +
+        '</div>';
+      }
       html += '</div>';
     }
 
@@ -936,6 +1165,12 @@
     el.querySelectorAll("[data-toggle-cel]").forEach(function (b) {
       b.addEventListener("click", function (e) { e.stopPropagation(); toggleConcluida(b.getAttribute("data-toggle-cel")); });
     });
+    el.querySelectorAll("[data-imped-cel]").forEach(function (b) {
+      b.addEventListener("click", function (e) { e.stopPropagation(); abrirModalImpedimento(b.getAttribute("data-imped-cel"), null); });
+    });
+    el.querySelectorAll("[data-ver-imped]").forEach(function (b) {
+      b.addEventListener("click", function (e) { e.stopPropagation(); abrirModalImpedimento(null, b.getAttribute("data-ver-imped")); });
+    });
   }
   function wireSemanaPicker() {
     document.getElementById("semana-picker").addEventListener("change", function (e) {
@@ -951,10 +1186,12 @@
   // inteira daquele bloco.
   function calcularHectaresPorFuncionario(dataIni, dataFim) {
     var totais = {};
+    var mapa = mapaImpedimentos_();
     currentFuncionarios.forEach(function (f) { totais[f.nome] = 0; });
     registros.forEach(function (r) {
       if (r._pendingDelete || !r.areaHa) return;
       if (r.data < dataIni || r.data > dataFim) return;
+      if (impedDoBloco_(r, mapa)) return; // impedida por outra equipe: não foi feita
       totais[r.funcionario] = (totais[r.funcionario] || 0) + r.areaHa;
     });
     return totais;
@@ -978,9 +1215,13 @@
     var porFunc = {};
     currentFuncionarios.forEach(function (f) { porFunc[f.nome] = { planejado: 0, real: 0, dias: 0 }; });
     var planejadoPorDia = {}; // { "func|data": soma de areaHa }
+    var mapa = mapaImpedimentos_();
     registros.forEach(function (r) {
       if (r._pendingDelete || !r.areaHa) return;
       if (r.data < dataIni || r.data > dataFim) return;
+      // impedida por outra equipe não entra no "planejado" - senão a pessoa
+      // aparece rendendo pouco por culpa que não é dela
+      if (impedDoBloco_(r, mapa)) return;
       var chave = r.funcionario + "|" + r.data;
       planejadoPorDia[chave] = (planejadoPorDia[chave] || 0) + r.areaHa;
     });
@@ -1083,6 +1324,8 @@
       return;
     }
 
+    html += htmlPainelImpedimentos_();
+
     var totais = calcularHectaresPorFuncionario(painelDataInicio, painelDataFim);
     var entradas = currentFuncionarios.map(function (f) { return { nome: f.nome, metaHa: f.metaHa || 0, ha: totais[f.nome] || 0 }; })
       .sort(function (a, b) { return b.ha - a.ha; });
@@ -1091,8 +1334,10 @@
     // ganha os 18 ha no ranking, mas o total da fazenda é 18 - não 72.
     // Agrupa os blocos iguais (mesmo dia/atividade/setor/área) pra contar uma vez.
     var areaUnica = {};
+    var mapaPainel = mapaImpedimentos_();
     registros.forEach(function (r) {
       if (r._pendingDelete || !r.areaHa || r.data < painelDataInicio || r.data > painelDataFim) return;
+      if (impedDoBloco_(r, mapaPainel)) return;
       areaUnica[r.data + "|" + r.atividade + "|" + (r.setor || "") + "|" + r.areaHa] = r.areaHa;
     });
     var somaAreaFazenda = Object.keys(areaUnica).reduce(function (s, k) { return s + areaUnica[k]; }, 0);
@@ -1156,6 +1401,7 @@
     el.innerHTML = html;
     wireToggleButtons_();
     wirePainelPickers();
+    wirePainelImpedimentos_(el);
     el.querySelectorAll("[data-semana-offset]").forEach(function (b) {
       b.addEventListener("click", function () {
         alertaSemanaOffset = parseInt(b.getAttribute("data-semana-offset"), 10);
@@ -1163,6 +1409,147 @@
       });
     });
   }
+  // ================= PAINEL: IMPEDIMENTOS POR OUTRAS EQUIPES =================
+  function impedimentosDoPeriodo_(ini, fim) {
+    return impedimentos.filter(function (im) { return im.data >= ini && im.data <= fim; })
+      .sort(function (a, b) { return a.data === b.data ? 0 : (a.data < b.data ? 1 : -1); }); // mais recente primeiro
+  }
+  function resumoImpedimentos_(lista) {
+    var r = { n: lista.length, hhMin: 0, foraProg: 0, semAviso: 0, naoRemarcadas: 0, porEquipe: {} };
+    lista.forEach(function (im) {
+      var hh = horasHomemMin_(im);
+      r.hhMin += hh;
+      if (im.estavaProgramado === "Não") r.foraProg++;
+      if (im.avisaram === "Não") r.semAviso++;
+      if (!im.remarcadaPara) r.naoRemarcadas++;
+      var eq = im.equipe || "—";
+      if (!r.porEquipe[eq]) r.porEquipe[eq] = { n: 0, hhMin: 0 };
+      r.porEquipe[eq].n++;
+      r.porEquipe[eq].hhMin += hh;
+    });
+    r.equipesOrdenadas = Object.keys(r.porEquipe).sort(function (a, b) {
+      return (r.porEquipe[b].hhMin - r.porEquipe[a].hhMin) || (r.porEquipe[b].n - r.porEquipe[a].n);
+    });
+    return r;
+  }
+  function fmtHoras_(min) {
+    min = Math.round(min || 0);
+    var h = Math.floor(min / 60), m = min % 60;
+    return h + "h" + (m ? String(m).padStart(2, "0") : "");
+  }
+  function badgesImpedimento_(im) {
+    function b(txt, cor, fundo) { return '<span class="imped-badge" style="color:' + cor + ';background:' + fundo + ';">' + txt + '</span>'; }
+    var out = "";
+    if (im.estavaProgramado === "Não") out += b("fora da programação deles", "#8A2E2E", "#F5DADA");
+    else if (im.estavaProgramado === "Sim") out += b("estava na programação deles", "#4A4136", "#EEE7D5");
+    if (im.avisaram === "Não") out += b("sem aviso", "#8A2E2E", "#F5DADA");
+    else if (im.avisaram === "Sim") out += b("avisaram antes", "#4A4136", "#EEE7D5");
+    out += im.remarcadaPara ? b("↪ remarcada p/ " + fmtDate(im.remarcadaPara).slice(0, 5), "#28603C", "#DCEEDC") : b("não remarcada", "#8A5A2E", "#F0E0C8");
+    if (im.areaOcupadaAte) out += b("área ocupada até " + fmtDate(im.areaOcupadaAte).slice(0, 5), "#4A4136", "#EEE7D5");
+    if (!im._synced) out += b("só no celular", "#4A4136", "#EEE7D5");
+    return out;
+  }
+  function htmlPainelImpedimentos_() {
+    var lista = impedimentosDoPeriodo_(painelDataInicio, painelDataFim);
+    var html = '<div class="func-card" style="border-color:#E0B3A8;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">' +
+        '<div style="font-family:\'Oswald\',sans-serif;font-size:14px;font-weight:600;">⛔ Impedimentos por outras equipes</div>' +
+        '<button class="nav-btn" id="btn-imped-novo" style="padding:6px 10px;font-size:12px;white-space:nowrap;">+ Registrar</button>' +
+      '</div>';
+    if (!impedBackendOk) {
+      html += '<div style="background:#FBF4E4;border-left:4px solid #B8862B;border-radius:4px;padding:8px 10px;font-size:11.5px;color:#4A4136;margin-bottom:10px;line-height:1.4;">⚠ Os registros estão guardados <b>só neste celular</b>: falta colar o arquivo Impedimentos.gs no Apps Script. Assim que colar, eles sobem sozinhos pra planilha.</div>';
+    }
+    if (!lista.length) {
+      html += '<div style="font-size:12px;color:#8A8072;line-height:1.45;">Nenhum impedimento nesse período. Quando outra equipe atrapalhar uma atividade, toque no <b>⛔</b> dela (no Dia ou na Semana).</div></div>';
+      return html;
+    }
+    var r = resumoImpedimentos_(lista);
+    html += '<div class="kpi-row" style="margin-bottom:10px;">' +
+      '<div class="kpi-tile" style="border-color:#E0B3A8;"><div class="kpi-num" style="color:#B4442E;">' + r.n + '</div><div class="kpi-label">IMPEDIMENTO(S)</div></div>' +
+      '<div class="kpi-tile" style="border-color:#E0B3A8;"><div class="kpi-num" style="color:#B4442E;">' + fmtHoras_(r.hhMin) + '</div><div class="kpi-label">HORAS-HOMEM PERDIDAS</div></div>' +
+      '<div class="kpi-tile" style="border-color:#E0B3A8;"><div class="kpi-num" style="color:#B4442E;">' + r.foraProg + '/' + r.n + '</div><div class="kpi-label">FORA DA PROGRAMAÇÃO DELES</div></div>' +
+    '</div>';
+    html += '<div style="font-size:11.5px;color:#4A4136;margin-bottom:12px;">Sem aviso antes: <b>' + r.semAviso + ' de ' + r.n + '</b> · Ainda não remarcadas: <b>' + r.naoRemarcadas + '</b></div>';
+    var maior = Math.max.apply(null, r.equipesOrdenadas.map(function (e) { return r.porEquipe[e].hhMin; }).concat([1]));
+    r.equipesOrdenadas.forEach(function (eq) {
+      var d = r.porEquipe[eq];
+      html += '<div class="bar-row"><div class="bar-label-row"><span class="bar-label">' + escapeHtml(eq) + '</span>' +
+        '<span class="bar-count">' + d.n + 'x · ' + fmtHoras_(d.hhMin) + '</span></div>' +
+        '<div class="bar-track"><div class="bar-fill" style="width:' + Math.max(4, d.hhMin / maior * 100) + '%;background:#B4442E;"></div></div></div>';
+    });
+    html += '<div style="margin-top:4px;">';
+    lista.forEach(function (im) {
+      var dt = new Date(im.data + "T00:00:00");
+      html += '<div class="imped-item" data-ver-imped="' + im.id + '">' +
+        '<div style="display:flex;justify-content:space-between;gap:6px;">' +
+          '<span style="font-size:12.5px;font-weight:700;">' + fmtDate(im.data).slice(0, 5) + ' ' + NOMES_DIA_SEMANA[dt.getDay()] + (im.setor ? ' · ' + escapeHtml(im.setor) : '') + ' — ' + escapeHtml(im.equipe) + '</span>' +
+          '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:#B4442E;font-weight:700;white-space:nowrap;">' + fmtHoras_(horasHomemMin_(im)) + '</span>' +
+        '</div>' +
+        '<div style="font-size:11.5px;color:#4A4136;margin-top:2px;">' + escapeHtml(im.motivo) + (im.oQueFaziam ? ' (' + escapeHtml(im.oQueFaziam) + ')' : '') + '</div>' +
+        '<div style="font-size:11px;color:#6B6153;margin-top:2px;">' + escapeHtml(im.atividade || "—") + ' · ' + escapeHtml((im.funcionarios || []).join(", ")) + '</div>' +
+        '<div>' + badgesImpedimento_(im) + '</div>' +
+      '</div>';
+    });
+    html += '</div>';
+    html += '<button class="photo-btn" id="btn-imped-relatorio" style="background:#1F7A4D;margin-top:12px;">📤 Enviar relatório (WhatsApp)</button>';
+    html += '</div>';
+    return html;
+  }
+  // Texto pronto pro WhatsApp (o *negrito* e _itálico_ já saem formatados lá)
+  function textoRelatorioImpedimentos_() {
+    var lista = impedimentosDoPeriodo_(painelDataInicio, painelDataFim).slice().reverse(); // ordem cronológica
+    var r = resumoImpedimentos_(lista);
+    var L = [];
+    L.push("*⛔ IMPEDIMENTOS POR OUTRAS EQUIPES*");
+    L.push("_Equipe de Irrigação · " + fmtDate(painelDataInicio).slice(0, 5) + " a " + fmtDate(painelDataFim).slice(0, 5) + "_");
+    L.push("");
+    if (!lista.length) { L.push("Nenhum impedimento no período. ✅"); return L.join("\n"); }
+    L.push("*" + r.n + " impedimento(s)* · " + fmtHoras_(r.hhMin) + " de horas-homem perdidas");
+    L.push("Fora da programação deles: " + r.foraProg + " de " + r.n);
+    L.push("Sem aviso antes: " + r.semAviso + " de " + r.n);
+    if (r.naoRemarcadas) L.push("Ainda não remarcadas: " + r.naoRemarcadas);
+    L.push("");
+    L.push("*Por equipe:*");
+    r.equipesOrdenadas.forEach(function (eq) {
+      L.push("• " + eq + ": " + r.porEquipe[eq].n + "x (" + fmtHoras_(r.porEquipe[eq].hhMin) + ")");
+    });
+    L.push("");
+    L.push("*Detalhes:*");
+    lista.forEach(function (im, i) {
+      var dt = new Date(im.data + "T00:00:00");
+      L.push((i + 1) + ") " + fmtDate(im.data).slice(0, 5) + " (" + NOMES_DIA_SEMANA[dt.getDay()] + ")" + (im.setor ? " · " + im.setor : "") + " — *" + im.equipe + "*");
+      L.push("   " + im.motivo + (im.oQueFaziam ? " (" + im.oQueFaziam + ")" : ""));
+      L.push("   Nossa atividade: " + (im.atividade || "—") + " — " + (im.funcionarios || []).join(", ") + " · " + fmtHoras_(im.minutos) + " cada");
+      var flags = [];
+      if (im.estavaProgramado === "Não") flags.push("não estava na programação deles");
+      else if (im.estavaProgramado === "Sim") flags.push("estava na programação deles");
+      if (im.avisaram === "Não") flags.push("não avisaram");
+      else if (im.avisaram === "Sim") flags.push("avisaram antes");
+      if (flags.length) L.push("   " + flags.join(" · "));
+      if (im.areaOcupadaAte) L.push("   Área ocupada até " + fmtDate(im.areaOcupadaAte).slice(0, 5));
+      L.push("   " + (im.remarcadaPara ? "↪ Remarcada p/ " + fmtDate(im.remarcadaPara).slice(0, 5) : "Ainda não remarcada"));
+      if (im.observacao) L.push("   Obs.: " + im.observacao);
+    });
+    return L.join("\n");
+  }
+  function enviarRelatorioImpedimentos_() {
+    var texto = textoRelatorioImpedimentos_();
+    if (navigator.share) {
+      navigator.share({ title: "Impedimentos por outras equipes", text: texto }).catch(function () {});
+    } else {
+      window.open("https://wa.me/?text=" + encodeURIComponent(texto), "_blank");
+    }
+  }
+  function wirePainelImpedimentos_(el) {
+    var bNovo = document.getElementById("btn-imped-novo");
+    if (bNovo) bNovo.addEventListener("click", function () { abrirModalImpedimento(null, null); });
+    var bRel = document.getElementById("btn-imped-relatorio");
+    if (bRel) bRel.addEventListener("click", enviarRelatorioImpedimentos_);
+    el.querySelectorAll("[data-ver-imped]").forEach(function (b) {
+      b.addEventListener("click", function () { abrirModalImpedimento(null, b.getAttribute("data-ver-imped")); });
+    });
+  }
+
   function wirePainelPickers() {
     document.getElementById("painel-data-inicio").addEventListener("change", function (e) {
       painelDataInicio = e.target.value;
@@ -1351,18 +1738,34 @@
     if (!valor) { el.textContent = ""; return; }
     // pode ter mais de um setor separado por vírgula - mostra o pior caso
     var nomes = valor.split(",").map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+    var html = "";
     var piores = nomes.map(situacaoSetor_).filter(function (s) { return s; });
-    if (!piores.length) { el.textContent = ""; return; }
-    var ordem = { atrasado: 0, nunca: 1, proximo: 2, em_dia: 3 };
-    piores.sort(function (a, b) { return ordem[a.status] - ordem[b.status]; });
-    var pior = piores[0];
-    var cor = STATUS_COR_[pior.status];
-    var texto = (pior.status === "nunca") ? "Nunca teve manutenção registrada"
-      : (pior.status === "atrasado") ? "Atrasado há " + pior.diasAtraso + " dia(s)"
-      : (pior.status === "proximo") ? "Vence em breve (" + fmtDateUTC_(pior.proxima) + ")"
-      : "Em dia (próxima em " + fmtDateUTC_(pior.proxima) + ")";
-    el.innerHTML = '<span style="color:' + cor + ';font-weight:700;">●</span> ' + texto +
-      (nomes.length > 1 ? ' <span style="color:#8A8072;">(pior dos ' + nomes.length + ' setores)</span>' : '');
+    if (piores.length) {
+      var ordem = { atrasado: 0, nunca: 1, proximo: 2, em_dia: 3 };
+      piores.sort(function (a, b) { return ordem[a.status] - ordem[b.status]; });
+      var pior = piores[0];
+      var cor = STATUS_COR_[pior.status];
+      var texto = (pior.status === "nunca") ? "Nunca teve manutenção registrada"
+        : (pior.status === "atrasado") ? "Atrasado há " + pior.diasAtraso + " dia(s)"
+        : (pior.status === "proximo") ? "Vence em breve (" + fmtDateUTC_(pior.proxima) + ")"
+        : "Em dia (próxima em " + fmtDateUTC_(pior.proxima) + ")";
+      html = '<span style="color:' + cor + ';font-weight:700;">●</span> ' + texto +
+        (nomes.length > 1 ? ' <span style="color:#8A8072;">(pior dos ' + nomes.length + ' setores)</span>' : '');
+    }
+    // Outra equipe ocupando o setor nesse dia (registrado num impedimento)
+    var avisos = setoresOcupadosNoDia_(nomes, document.getElementById("ativ-data").value);
+    if (avisos.length) {
+      html += '<div style="color:#B4442E;font-weight:700;margin-top:3px;">⛔ ' + escapeHtml(avisos.join("; ")) + '</div>';
+    }
+    el.innerHTML = html;
+  }
+  function setoresOcupadosNoDia_(nomesSetores, dataISO) {
+    var avisos = [];
+    nomesSetores.forEach(function (s) {
+      var oc = ocupacaoDoSetor_(s, dataISO);
+      if (oc) avisos.push(textoOcupacao_(s, oc));
+    });
+    return avisos;
   }
 
   function listaTalhoesComStatus_() {
@@ -1377,6 +1780,7 @@
   function abrirSeletorSetores_() {
     if (!currentTalhoes.length) { showToast("Ainda não sincronizou a lista de talhões - abre o app com internet uma vez."); return; }
     var jaEscolhidos = document.getElementById("ativ-setor").value.split(",").map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+    var dataDoModal = document.getElementById("ativ-data").value;
     var el = document.getElementById("setores-picker-lista");
     var porCultura = {};
     listaTalhoesComStatus_().forEach(function (item) {
@@ -1394,9 +1798,12 @@
         var badge = (info.status === "nunca") ? "nunca feito"
           : (info.status === "atrasado") ? "atrasado " + info.diasAtraso + "d"
           : (info.status === "proximo") ? "próx. do prazo" : "em dia";
+        var ocup = ocupacaoDoSetor_(t.nome, dataDoModal);
         html += '<label class="checkbox-row" style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;border-bottom:1px solid #EFEAD9;">' +
           '<span><input type="checkbox" value="' + escapeHtml(t.nome) + '" ' + (marcado ? "checked" : "") + ' style="margin-right:8px;"> <b>' + escapeHtml(t.nome) + '</b></span>' +
-          '<span style="font-size:10.5px;font-weight:700;color:' + cor + ';">' + badge + '</span>' +
+          '<span style="font-size:10.5px;font-weight:700;color:' + cor + ';text-align:right;">' + badge +
+            (ocup ? '<br><span style="color:#B4442E;">⛔ ' + escapeHtml(ocup.equipe) + ' até ' + fmtDate(ocup.areaOcupadaAte).slice(0, 5) + '</span>' : '') +
+          '</span>' +
         '</label>';
       });
     });
@@ -1419,10 +1826,18 @@
   // programar setor que nem estava vencido enquanto outro ficava esquecido.
   function sugerirSetoresAtrasados_() {
     if (!currentTalhoes.length) { showToast("Ainda não sincronizou a lista de talhões - abre o app com internet uma vez."); return; }
+    var dataAtiv = document.getElementById("ativ-data").value;
+    var pulados = 0;
     var comStatus = listaTalhoesComStatus_().filter(function (item) {
-      return item.info.status === "atrasado" || item.info.status === "nunca";
+      if (item.info.status !== "atrasado" && item.info.status !== "nunca") return false;
+      // não adianta sugerir setor que outra equipe vai estar ocupando nesse dia
+      if (ocupacaoDoSetor_(item.talhao.nome, dataAtiv)) { pulados++; return false; }
+      return true;
     });
-    if (!comStatus.length) { showToast("Nenhum setor atrasado no momento 🎉"); return; }
+    if (!comStatus.length) {
+      showToast(pulados ? "Os setores atrasados estão ocupados por outra equipe nesse dia." : "Nenhum setor atrasado no momento 🎉");
+      return;
+    }
     comStatus.sort(function (a, b) {
       var da = a.info.diasAtraso || 999, db = b.info.diasAtraso || 999; // "nunca" conta como muito atrasado
       return db - da;
@@ -1430,7 +1845,8 @@
     var escolhidos = comStatus.slice(0, 4).map(function (item) { return item.talhao.nome; });
     document.getElementById("ativ-setor").value = escolhidos.join(", ");
     atualizarHintSetor_();
-    showToast("Sugeridos os " + escolhidos.length + " setores mais atrasados.");
+    showToast("Sugeridos os " + escolhidos.length + " setores mais atrasados." +
+      (pulados ? " Pulei " + pulados + " ocupado(s) por outra equipe." : ""));
   }
 
   function abrirModalAtividade(id, funcPre, diaPre) {
@@ -1541,12 +1957,15 @@
     var diasAnteriores = [0, 1, 2, 3, 4].map(function (i) { return addDiasISO(segundaAnterior, i); });
     var diasAtuais = [0, 1, 2, 3, 4].map(function (i) { return addDiasISO(segundaAtual, i); });
     var totalCopiado = 0, diasPulados = 0;
+    // Atividade impedida não entra na cópia: ela não aconteceu, e a versão
+    // remarcada (se tiver) já é copiada no dia em que foi feita.
+    var mapaCopia = mapaImpedimentos_();
     diasAnteriores.forEach(function (diaAnt, idx) {
       var diaNovo = diasAtuais[idx];
       var jaTemAlgo = registros.some(function (r) { return r.data === diaNovo && !r._pendingDelete; });
       if (jaTemAlgo) { diasPulados++; return; }
       var porFuncionario = {};
-      registros.filter(function (r) { return r.data === diaAnt && !r._pendingDelete; })
+      registros.filter(function (r) { return r.data === diaAnt && !r._pendingDelete && !impedDoBloco_(r, mapaCopia); })
         .sort(function (a, b) { return timeToMin(a.horarioInicio) - timeToMin(b.horarioInicio); })
         .forEach(function (r) {
           var func = r.funcionario;
@@ -1555,7 +1974,7 @@
           porFuncionario[func] = fim;
           registros.unshift({
             id: uid(), data: diaNovo, funcionario: func, atividade: r.atividade, setor: r.setor || "", duracaoMin: r.duracaoMin, areaHa: r.areaHa || 0,
-            horarioInicio: inicio, horarioFim: fim, observacao: r.observacao || "", concluida: false,
+            horarioInicio: inicio, horarioFim: fim, observacao: limparTagRemarcada_(r.observacao), concluida: false,
             _synced: false, _pendingDelete: false
           });
           totalCopiado++;
@@ -1651,6 +2070,7 @@
       return { nome: funcObj.nome, altura: linhaAlturaBase + maxBlocos * linhaBlocoH + 8 };
     });
     var headerH = 100, tabHeaderH = 32;
+    var mapaCanvas = mapaImpedimentos_();
     var H = headerH + tabHeaderH + funcRows.reduce(function (s, r) { return s + r.altura; }, 0) + 40;
 
     var canvas = document.createElement("canvas");
@@ -1691,11 +2111,12 @@
           ctx.fillText("—", x + 6, yy + 12);
         } else {
           blocos.forEach(function (r) {
-            ctx.fillStyle = "#4A4136"; ctx.font = "bold 10.5px Arial";
+            var im = impedDoBloco_(r, mapaCanvas);
+            ctx.fillStyle = im ? "#B4442E" : "#4A4136"; ctx.font = "bold 10.5px Arial";
             var texto = r.atividade + (r.setor ? " (" + r.setor + ")" : "");
-            ctx.fillText((r.concluida ? "✓ " : "") + truncateTexto_(ctx, texto, colDiaW - 16), x + 6, yy + 12);
-            ctx.fillStyle = CINZA; ctx.font = "10px Arial";
-            ctx.fillText(r.horarioInicio + "–" + r.horarioFim, x + 6, yy + 24);
+            ctx.fillText((im ? "✗ " : (r.concluida ? "✓ " : "")) + truncateTexto_(ctx, texto, colDiaW - 22), x + 6, yy + 12);
+            ctx.fillStyle = im ? "#B4442E" : CINZA; ctx.font = "10px Arial";
+            ctx.fillText(im ? truncateTexto_(ctx, "impedida · " + im.equipe, colDiaW - 16) : (r.horarioInicio + "–" + r.horarioFim), x + 6, yy + 24);
             yy += linhaBlocoH;
           });
         }
@@ -1877,10 +2298,309 @@
       });
     }
     saveRegistros();
+    var avisoOcup = setoresOcupadosNoDia_(splitSetores_(setor), data);
     fecharModalAtividade();
     renderContent();
-    showToast(!editingId && dividiuAlgum ? "Atividade não cabia no expediente - dividida automaticamente entre os dias. Já dá pra editar cada parte." : "Atividade salva.");
+    showToast((!editingId && dividiuAlgum ? "Atividade não cabia no expediente - dividida automaticamente entre os dias. Já dá pra editar cada parte." : "Atividade salva.") +
+      (avisoOcup.length ? " ⚠ " + avisoOcup.join("; ") + "." : ""));
     trySync();
+  }
+
+  // ================= MODAL: IMPEDIMENTO POR OUTRA EQUIPE =================
+  var impedEditId = null;          // registro existente aberto (ou null = novo)
+  var impedGrupo = [];             // blocos da turma, quando veio de uma atividade da grade
+  var impedConfirmandoExclusao = false;
+  var impedTombstones = {};        // ids excluídos aqui que ainda não tinham subido
+
+  // Botões de escolha rápida (um toque). O valor escolhido fica em data-valor.
+  function renderChips_(containerId, opcoes, selecionado, onChange) {
+    var el = document.getElementById(containerId);
+    el.setAttribute("data-valor", selecionado || "");
+    el.innerHTML = opcoes.map(function (o) {
+      var val = typeof o === "string" ? o : o.valor;
+      var rot = typeof o === "string" ? o : o.rotulo;
+      return '<button type="button" class="chip' + (val === selecionado ? " on" : "") + '" data-chip="' + escapeHtml(val) + '">' + escapeHtml(rot) + '</button>';
+    }).join("");
+    el.querySelectorAll("[data-chip]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var v = b.getAttribute("data-chip");
+        el.setAttribute("data-valor", v);
+        el.querySelectorAll(".chip").forEach(function (c) { c.classList.toggle("on", c === b); });
+        if (onChange) onChange(v);
+      });
+    });
+  }
+  function valorChips_(containerId) { return document.getElementById(containerId).getAttribute("data-valor") || ""; }
+  function funcsMarcadasImped_() {
+    return Array.prototype.slice.call(document.querySelectorAll("#imped-funcionarios input:checked")).map(function (c) { return c.value; });
+  }
+  function dataBaseImped_() {
+    return impedGrupo.length ? impedGrupo[0].data : (document.getElementById("imped-data").value || todayStr());
+  }
+  // Próximo dia útil depois do impedimento - ou depois da área liberar,
+  // se a outra equipe vai continuar ocupando o setor.
+  function dataRemarcarSugerida_() {
+    var d = proximoDiaUtil_(dataBaseImped_());
+    var ocup = document.getElementById("imped-ocupada-ate").value;
+    if (ocup && ocup >= d) d = proximoDiaUtil_(ocup);
+    return d;
+  }
+  function dataRemarcarEscolhida_() {
+    var opc = valorChips_("imped-remarcar-chips");
+    if (opc === "prox") return dataRemarcarSugerida_();
+    if (opc === "data") return document.getElementById("imped-remarcar-data").value;
+    return "";
+  }
+  function atualizarHHImped_() {
+    var min = timeToMin(document.getElementById("imped-minutos").value);
+    var n = funcsMarcadasImped_().length;
+    document.getElementById("imped-hh").textContent = n && min
+      ? "= " + fmtHoras_(min * n) + " de horas-homem (" + n + " pessoa" + (n > 1 ? "s" : "") + ")"
+      : "";
+  }
+  function atualizarRemarcarImped_() {
+    var atual = valorChips_("imped-remarcar-chips") || "nao";
+    var sug = dataRemarcarSugerida_();
+    var dtSug = new Date(sug + "T00:00:00");
+    renderChips_("imped-remarcar-chips", [
+      { valor: "nao", rotulo: "Agora não" },
+      { valor: "prox", rotulo: "Próx. dia útil (" + NOMES_DIA_SEMANA[dtSug.getDay()] + " " + fmtDate(sug).slice(0, 5) + ")" },
+      { valor: "data", rotulo: "Escolher dia" }
+    ], atual, atualizarRemarcarImped_);
+    var inpData = document.getElementById("imped-remarcar-data");
+    inpData.style.display = atual === "data" ? "" : "none";
+    if (atual === "data" && !inpData.value) inpData.value = sug;
+    var hint = document.getElementById("imped-remarcar-hint");
+    var dataNova = dataRemarcarEscolhida_();
+    if (atual === "nao" || !dataNova) {
+      hint.textContent = "Ela fica marcada como impedida. Dá pra remarcar depois, abrindo este registro.";
+      return;
+    }
+    var setor = impedGrupo.length ? (impedGrupo[0].setor || "") : document.getElementById("imped-setor").value;
+    var ocup = setoresOcupadosNoDia_(splitSetores_(setor), dataNova);
+    hint.innerHTML = "Vai lançar a atividade de novo em <b>" + fmtDate(dataNova) + "</b> pra quem ficou parado (no fim da fila do dia)." +
+      (ocup.length ? '<br><span style="color:#B4442E;font-weight:700;">⚠ ' + escapeHtml(ocup.join("; ")) + '</span>' : '');
+  }
+
+  function abrirModalImpedimento(blocoId, impedId) {
+    var bloco = blocoId ? registros.find(function (r) { return r.id === blocoId; }) : null;
+    var existente = impedId ? impedimentos.find(function (i) { return i.id === impedId; }) : null;
+    if (!existente && bloco) existente = impedDoBloco_(bloco); // ⛔ numa atividade que já tem registro: abre ele
+    impedEditId = existente ? existente.id : null;
+    impedConfirmandoExclusao = false;
+
+    // A "turma": todo mundo que estava na mesma atividade/setor naquele dia
+    if (existente) {
+      var ligado = registros.find(function (r) { return (existente.atividadeIds || []).indexOf(r.id) > -1 && r.data === existente.data; });
+      impedGrupo = ligado ? grupoDoBloco_(ligado) : [];
+    } else {
+      impedGrupo = bloco ? grupoDoBloco_(bloco) : [];
+    }
+    var semBloco = !impedGrupo.length;
+    var ref = bloco || impedGrupo[0] || null;
+
+    document.getElementById("imped-titulo").textContent = existente ? "⛔ Impedimento registrado" : "⛔ Impedida por outra equipe";
+    document.getElementById("imped-sem-bloco").style.display = semBloco ? "" : "none";
+    var resumo = document.getElementById("imped-resumo");
+    if (!semBloco) {
+      var dtRef = new Date(ref.data + "T00:00:00");
+      resumo.innerHTML = "<b>" + escapeHtml(ref.atividade) + (ref.setor ? " · " + escapeHtml(ref.setor) : "") + "</b><br>" +
+        NOMES_DIA_LONGO[dtRef.getDay()] + ", " + fmtDate(ref.data) + " · " + escapeHtml(ref.horarioInicio) + "–" + escapeHtml(ref.horarioFim);
+    } else {
+      resumo.textContent = existente ? "Registro sem atividade ligada na grade." : "Pra registrar quando outra equipe impediu o trabalho de vocês numa área.";
+      document.getElementById("imped-data").value = existente ? existente.data : diaSelecionado;
+      document.getElementById("imped-setor").value = existente ? (existente.setor || "") : "";
+      document.getElementById("ativ-setor-lista").innerHTML = currentSetoresAtiv.map(function (s) { return '<option value="' + escapeHtml(s) + '">'; }).join("");
+      var nomesAtiv = currentAtividades.map(function (a) { return a.nome; });
+      if (existente && existente.atividade && nomesAtiv.indexOf(existente.atividade) === -1) nomesAtiv.unshift(existente.atividade);
+      var selAtiv = document.getElementById("imped-atividade");
+      selAtiv.innerHTML = nomesAtiv.map(function (n) { return '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + '</option>'; }).join("");
+      if (existente && existente.atividade) selAtiv.value = existente.atividade;
+    }
+
+    // Quem ficou parado
+    var opcoesFunc, marcados;
+    if (!semBloco) {
+      opcoesFunc = [];
+      impedGrupo.forEach(function (b) { if (opcoesFunc.indexOf(b.funcionario) === -1) opcoesFunc.push(b.funcionario); });
+      marcados = existente ? (existente.funcionarios || []) : opcoesFunc.slice();
+    } else {
+      opcoesFunc = currentFuncionarios.map(function (f) { return f.nome; });
+      marcados = existente ? (existente.funcionarios || []) : [];
+    }
+    marcados.forEach(function (n) { if (opcoesFunc.indexOf(n) === -1) opcoesFunc.push(n); });
+    // mesma ordem da lista de funcionários (fica igual em todo lugar e no relatório)
+    var ordemFunc = currentFuncionarios.map(function (f) { return f.nome; });
+    opcoesFunc.sort(function (a, b) {
+      var ia = ordemFunc.indexOf(a), ib = ordemFunc.indexOf(b);
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+    });
+    document.getElementById("imped-funcionarios").innerHTML = opcoesFunc.map(function (n) {
+      return '<label class="checkbox-row"><input type="checkbox" value="' + escapeHtml(n) + '" ' + (marcados.indexOf(n) > -1 ? "checked" : "") + '> ' + escapeHtml(n) + '</label>';
+    }).join("");
+
+    // Equipe
+    var equipeAtual = existente ? (existente.equipe || "") : "";
+    var naLista = !equipeAtual || equipesExternas.indexOf(equipeAtual) > -1;
+    var inpOutra = document.getElementById("imped-equipe-outra");
+    inpOutra.value = naLista ? "" : equipeAtual;
+    inpOutra.style.display = naLista ? "none" : "";
+    renderChips_("imped-equipe-chips",
+      equipesExternas.concat([{ valor: "__outra", rotulo: "Outra…" }]),
+      naLista ? equipeAtual : "__outra",
+      function (v) {
+        inpOutra.style.display = v === "__outra" ? "" : "none";
+        if (v === "__outra") inpOutra.focus();
+      });
+
+    renderChips_("imped-motivo-chips", MOTIVOS_IMPED, existente ? existente.motivo : MOTIVOS_IMPED[0]);
+    document.getElementById("imped-oque").value = existente ? (existente.oQueFaziam || "") : "";
+    renderChips_("imped-programado-chips", ["Não", "Sim", "Não sei"], existente ? existente.estavaProgramado : "Não");
+    renderChips_("imped-avisaram-chips", ["Não", "Sim"], existente ? existente.avisaram : "Não");
+    document.getElementById("imped-minutos").value = existente ? minToTime(existente.minutos || 0) : minToTime(bloco ? bloco.duracaoMin : 60);
+    document.getElementById("imped-ocupada-ate").value = existente ? (existente.areaOcupadaAte || "") : "";
+    document.getElementById("imped-obs").value = existente ? (existente.observacao || "") : "";
+
+    // Remarcar (some se já foi remarcada, pra não lançar duas vezes)
+    var jaRemarcada = !!(existente && existente.remarcadaPara);
+    document.getElementById("imped-remarcar-wrap").style.display = jaRemarcada ? "none" : "";
+    var jaEl = document.getElementById("imped-ja-remarcada");
+    jaEl.style.display = jaRemarcada ? "" : "none";
+    jaEl.innerHTML = jaRemarcada ? "↪ Já remarcada para <b>" + fmtDate(existente.remarcadaPara) + "</b>." : "";
+    document.getElementById("imped-remarcar-chips").setAttribute("data-valor", "nao");
+    document.getElementById("imped-remarcar-data").value = "";
+    atualizarRemarcarImped_();
+    atualizarHHImped_();
+
+    // Excluir (só registro existente)
+    document.getElementById("imped-excluir-wrap").style.display = existente ? "" : "none";
+    document.getElementById("imped-del-pass-wrap").style.display = (existente && existente._synced) ? "" : "none";
+    document.getElementById("imped-del-pass").value = adminPassSessao;
+    document.getElementById("imped-del-result").style.display = "none";
+    var bDel = document.getElementById("btn-del-imped");
+    bDel.textContent = "🗑 Excluir este registro"; bDel.style.background = "#8A8072";
+
+    document.getElementById("btn-save-imped").textContent = existente ? "Salvar alterações" : "Registrar impedimento";
+    document.getElementById("modal-imped-overlay").classList.add("active");
+  }
+  function fecharModalImpedimento() {
+    document.getElementById("modal-imped-overlay").classList.remove("active");
+    impedEditId = null;
+    impedGrupo = [];
+  }
+
+  function salvarImpedimento_() {
+    var existente = impedEditId ? impedimentos.find(function (i) { return i.id === impedEditId; }) : null;
+    var semBloco = !impedGrupo.length;
+    var funcs = funcsMarcadasImped_();
+    var eqSel = valorChips_("imped-equipe-chips");
+    var equipe = eqSel === "__outra" ? document.getElementById("imped-equipe-outra").value.trim() : eqSel;
+    var motivo = valorChips_("imped-motivo-chips");
+    var minutos = timeToMin(document.getElementById("imped-minutos").value);
+    var data, setor, atividade;
+    if (semBloco) {
+      data = document.getElementById("imped-data").value;
+      setor = document.getElementById("imped-setor").value.trim();
+      atividade = document.getElementById("imped-atividade").value;
+    } else {
+      data = impedGrupo[0].data; setor = impedGrupo[0].setor || ""; atividade = impedGrupo[0].atividade;
+    }
+    var ocupadaAte = document.getElementById("imped-ocupada-ate").value;
+    var remarcarVisivel = document.getElementById("imped-remarcar-wrap").style.display !== "none";
+    var opcRemarcar = remarcarVisivel ? valorChips_("imped-remarcar-chips") : "nao";
+    var dataNova = opcRemarcar === "nao" ? "" : dataRemarcarEscolhida_();
+
+    if (!data) { showToast("Preencha a data."); return; }
+    if (!funcs.length) { showToast("Marque quem ficou sem poder fazer."); return; }
+    if (!equipe) { showToast("Escolha qual equipe atrapalhou."); return; }
+    if (!motivo) { showToast("Escolha o que aconteceu."); return; }
+    if (ocupadaAte && ocupadaAte < data) { showToast("O 'ocupada até' está antes do dia do impedimento."); return; }
+    if (opcRemarcar !== "nao" && !dataNova) { showToast("Escolha o dia pra remarcar."); return; }
+    if (dataNova && dataNova < data) { showToast("A remarcação tem que ser no mesmo dia ou depois do impedimento."); return; }
+
+    var ids = semBloco
+      ? (existente ? (existente.atividadeIds || []) : [])
+      : impedGrupo.filter(function (b) { return funcs.indexOf(b.funcionario) > -1; }).map(function (b) { return b.id; });
+    var campos = {
+      data: data, setor: setor, equipe: equipe, motivo: motivo,
+      oQueFaziam: document.getElementById("imped-oque").value.trim(),
+      estavaProgramado: valorChips_("imped-programado-chips"),
+      avisaram: valorChips_("imped-avisaram-chips"),
+      atividade: atividade, funcionarios: funcs, minutos: minutos,
+      areaOcupadaAte: ocupadaAte, observacao: document.getElementById("imped-obs").value.trim(),
+      atividadeIds: ids
+    };
+    var im;
+    if (existente) {
+      im = Object.assign(existente, campos);
+    } else {
+      im = Object.assign({ id: uid(), remarcadaPara: "", criadoEm: new Date().toISOString(), _synced: false, _pendingUpdate: false, _rev: 0 }, campos);
+      impedimentos.push(im);
+    }
+
+    // Remarcar: lança a atividade de novo pra cada um que ficou parado
+    var remarcou = false;
+    if (dataNova) {
+      funcs.forEach(function (f) {
+        var original = impedGrupo.find(function (b) { return b.funcionario === f; });
+        var dur = original ? (parseInt(original.duracaoMin, 10) || 0) : minutos;
+        if (!dur) return;
+        var obsBase = original ? limparTagRemarcada_(original.observacao).replace(/\s*\(continuação\)\s*$/, "") : "";
+        var obsNova = (obsBase ? obsBase + " · " : "") + tagRemarcada_(data, equipe);
+        var novos = distribuirAtividadeComContinuacao_(f, dataNova, atividade, setor, dur, original ? (original.areaHa || 0) : 0, obsNova);
+        novos.forEach(function (b) { registros.unshift(b); });
+        if (novos.length) remarcou = true;
+      });
+      if (remarcou) { im.remarcadaPara = dataNova; saveRegistros(); }
+    }
+    im._rev = (im._rev || 0) + 1;
+    if (im._synced) im._pendingUpdate = true;
+    saveImpedimentos_();
+    fecharModalImpedimento();
+    renderContent();
+    showToast((existente ? "Impedimento atualizado." : "Impedimento registrado.") +
+      (remarcou ? " Atividade remarcada p/ " + fmtDate(dataNova).slice(0, 5) + "." : "") +
+      (!impedBackendOk ? " (guardado só no celular até atualizar o Apps Script)" : ""));
+    trySync();
+  }
+
+  function excluirImpedimento_() {
+    var im = impedimentos.find(function (x) { return x.id === impedEditId; });
+    if (!im) return;
+    var bDel = document.getElementById("btn-del-imped");
+    var resultEl = document.getElementById("imped-del-result");
+    if (!impedConfirmandoExclusao) {
+      impedConfirmandoExclusao = true;
+      bDel.textContent = "Toque de novo pra confirmar a exclusão";
+      bDel.style.background = "#B4442E";
+      return;
+    }
+    function removerLocal() {
+      impedimentos = impedimentos.filter(function (x) { return x.id !== im.id; });
+      impedTombstones[im.id] = true;
+      saveImpedimentos_();
+      fecharModalImpedimento();
+      renderContent();
+      showToast("Registro de impedimento excluído.");
+    }
+    if (!im._synced) {
+      if (syncing) { showToast("Sincronizando agora - tenta de novo em alguns segundos."); return; }
+      removerLocal();
+      return;
+    }
+    var pass = document.getElementById("imped-del-pass").value.trim();
+    resultEl.className = "test-result"; resultEl.style.display = "block";
+    if (!config.url) { resultEl.className = "test-result fail"; resultEl.textContent = "Configure a sincronização primeiro."; return; }
+    if (!pass) { resultEl.className = "test-result fail"; resultEl.textContent = "Digite a senha de administrador."; return; }
+    if (!navigator.onLine) { resultEl.className = "test-result fail"; resultEl.textContent = "Precisa de internet."; return; }
+    resultEl.textContent = "Excluindo...";
+    postToBackend({ action: "delete_impedimento", adminToken: pass, id: im.id }).then(function (res) {
+      if (res && res.ok) { adminPassSessao = pass; removerLocal(); }
+      else { resultEl.className = "test-result fail"; resultEl.textContent = (res && res.error) || "Não consegui excluir."; }
+    }).catch(function (err) {
+      resultEl.className = "test-result fail";
+      resultEl.textContent = "Erro de conexão: " + (err && err.message ? err.message : String(err));
+    });
   }
 
   // ================= EXCLUIR =================
@@ -1941,13 +2661,18 @@
     if (!config.url || !config.token) { dot.style.background = "#8A8072"; txt.textContent = "Configure a sincronização"; return; }
     if (!navigator.onLine) { dot.style.background = "#B4442E"; txt.textContent = "Offline"; return; }
     if (syncing) { dot.style.background = "#2F7DB0"; txt.textContent = "Sincronizando..."; return; }
-    var pend = contarPendentes_();
+    var pendImped = contarPendentesLista_(impedimentos);
+    var pend = contarPendentes_() - (impedBackendOk ? 0 : pendImped);
     if (pend) { dot.style.background = "#D6A233"; txt.textContent = pend + " alteração(ões) aguardando envio"; return; }
+    if (!impedBackendOk && pendImped) { dot.style.background = "#D6A233"; txt.textContent = "⛔ " + pendImped + " impedimento(s) só no celular"; return; }
     dot.style.background = "#4C7C59"; txt.textContent = "Sincronizado";
   }
+  function contarPendentesLista_(lista) {
+    return lista.filter(function (x) { return !x._synced || x._pendingUpdate; }).length;
+  }
   function contarPendentes_() {
-    function n(lista) { return lista.filter(function (x) { return !x._synced || x._pendingUpdate; }).length; }
-    return n(registros) + n(rendimentosDiarios) + n(lancamentosBanco);
+    return contarPendentesLista_(registros) + contarPendentesLista_(rendimentosDiarios) +
+      contarPendentesLista_(lancamentosBanco) + contarPendentesLista_(impedimentos);
   }
 
   // A sincronização automática redesenhava a tela inteira a cada 25s: apagava
@@ -2055,6 +2780,33 @@
       });
     });
 
+    // Impedimentos: o servidor cria OU atualiza pelo id, então reenviar
+    // nunca duplica. Se o Apps Script ainda não tem o Impedimentos.gs, ele
+    // responde "ação desconhecida" - aí fica guardado no celular e tenta
+    // de novo no próximo ciclo, sem encher de mensagem de erro.
+    var pularImped = false;
+    impedimentos.filter(function (im) { return !im._synced || im._pendingUpdate; }).forEach(function (im) {
+      chain = chain.then(function () {
+        if (pularImped) return;
+        var revEnviada = im._rev || 0;
+        var eraNovo = !im._synced;
+        return postToBackend({ token: config.token, action: eraNovo ? "create_impedimento" : "update_impedimento", impedimento: impedParaEnvio_(im) })
+          .then(function (res) {
+            if (res && res.ok) {
+              impedBackendOk = true;
+              im._synced = true;
+              // se mexeram nele enquanto enviava, manda de novo no próximo ciclo
+              im._pendingUpdate = (im._rev || 0) !== revEnviada;
+              saveImpedimentos_();
+            } else if (res && /desconhecida/i.test(res.error || "")) {
+              impedBackendOk = false; pularImped = true;
+            } else {
+              errosSync.push((res && res.error) || "erro ao salvar impedimento");
+            }
+          }).catch(function (err) { errosSync.push(err && err.message ? err.message : String(err)); });
+      });
+    });
+
     chain = chain.then(function () {
       return fetch(config.url + "?t=" + Date.now()).then(function (r) { return r.text(); }).then(function (text) {
         if (text === ultimaRespostaSync && !enviouAlgo) return; // nada novo no servidor
@@ -2153,6 +2905,26 @@
       });
     }).catch(function (err) { errosSync.push(err && err.message ? err.message : String(err)); });
 
+    chain = chain.then(function () {
+      if (pularImped) return;
+      return postToBackend({ token: config.token, action: "list_impedimentos" }).then(function (res) {
+        if (!res || !res.ok) {
+          if (res && /desconhecida/i.test(res.error || "")) impedBackendOk = false;
+          return;
+        }
+        impedBackendOk = true;
+        var texto = JSON.stringify(res);
+        if (texto === ultimaRespostaImped && !enviouAlgo) return;
+        ultimaRespostaImped = texto;
+        dadosMudaram = true;
+        if (res.equipes && res.equipes.length) {
+          equipesExternas = res.equipes;
+          try { localStorage.setItem(EQUIPES_EXT_CACHE_KEY, JSON.stringify(equipesExternas)); } catch (e) {}
+        }
+        mesclarImpedimentosDoServidor_(res.impedimentos || []);
+      }).catch(function () { /* sem internet no meio: tenta no próximo ciclo */ });
+    });
+
     return chain.then(function () {
       syncing = false;
       refreshSyncPill();
@@ -2161,6 +2933,9 @@
         // se for erro novo ou se o toque foi no "Sincronizar agora"
         if (manual || errosSync[0] !== ultimoErroSync) showToast("Erro ao sincronizar: " + errosSync[0]);
         ultimoErroSync = errosSync[0];
+      } else if (!impedBackendOk && contarPendentesLista_(impedimentos) && (manual || !avisouBackendImped)) {
+        avisouBackendImped = true;
+        showToast("⛔ Impedimentos guardados só no celular: falta colar o Impedimentos.gs no Apps Script.");
       } else {
         ultimoErroSync = "";
         if (manual) showToast("Tudo sincronizado ✓");
@@ -2187,6 +2962,8 @@
     document.getElementById("admin-funcionarios-result").style.display = "none";
     document.getElementById("admin-setores-ativ").value = currentSetoresAtiv.join("\n");
     document.getElementById("admin-setores-ativ-result").style.display = "none";
+    document.getElementById("admin-equipes-externas").value = equipesExternas.join("\n");
+    document.getElementById("admin-equipes-externas-result").style.display = "none";
     document.getElementById("modal-config-overlay").classList.add("active");
   }
   function fecharConfig() { document.getElementById("modal-config-overlay").classList.remove("active"); }
@@ -2286,6 +3063,27 @@
     }).catch(function () { resultEl.className = "test-result fail"; resultEl.textContent = "Erro de conexão."; });
   }
 
+  function salvarEquipesExternasLista() {
+    var pass = document.getElementById("admin-pass-ativ").value.trim();
+    var lista = document.getElementById("admin-equipes-externas").value.split("\n").map(function (l) { return l.trim(); }).filter(function (l) { return l; });
+    var resultEl = document.getElementById("admin-equipes-externas-result");
+    resultEl.className = "test-result"; resultEl.style.display = "block";
+    if (!config.url) { resultEl.className = "test-result fail"; resultEl.textContent = "Configure a sincronização primeiro."; return; }
+    if (!pass) { resultEl.className = "test-result fail"; resultEl.textContent = "Digite a senha de administrador (lá em cima, em Atividades)."; return; }
+    if (!lista.length) { resultEl.className = "test-result fail"; resultEl.textContent = "A lista não pode ficar vazia."; return; }
+    resultEl.textContent = "Salvando...";
+    postToBackend({ action: "update_equipes_externas", adminToken: pass, equipes: lista }).then(function (res) {
+      if (res && res.ok) {
+        equipesExternas = res.equipes || lista;
+        try { localStorage.setItem(EQUIPES_EXT_CACHE_KEY, JSON.stringify(equipesExternas)); } catch (e) {}
+        resultEl.className = "test-result ok"; resultEl.textContent = "Equipes atualizadas!";
+      } else {
+        resultEl.className = "test-result fail";
+        resultEl.textContent = (res && /token|desconhecida/i.test(res.error || "")) ? "O Apps Script ainda não tem o arquivo Impedimentos.gs." : ((res && res.error) || "Não consegui salvar.");
+      }
+    }).catch(function () { resultEl.className = "test-result fail"; resultEl.textContent = "Erro de conexão."; });
+  }
+
   // ================= INIT =================
   document.addEventListener("DOMContentLoaded", function () {
     loadConfig();
@@ -2293,6 +3091,7 @@
     loadTombstones();
     loadRendimentosDiarios();
     loadLancamentosBanco();
+    loadImpedimentos_();
     try {
       var cAtiv = localStorage.getItem(ATIVIDADES_CACHE_KEY);
       if (cAtiv) currentAtividades = JSON.parse(cAtiv);
@@ -2329,6 +3128,19 @@
     document.getElementById("btn-save-atividades").addEventListener("click", salvarAtividadesLista);
     document.getElementById("btn-save-funcionarios").addEventListener("click", salvarFuncionariosLista);
     document.getElementById("btn-save-setores-ativ").addEventListener("click", salvarSetoresAtivLista);
+    document.getElementById("btn-save-equipes-externas").addEventListener("click", salvarEquipesExternasLista);
+
+    // Modal de impedimento
+    document.getElementById("btn-close-imped").addEventListener("click", fecharModalImpedimento);
+    document.getElementById("modal-imped-overlay").addEventListener("click", function (e) { if (e.target.id === "modal-imped-overlay") fecharModalImpedimento(); });
+    document.getElementById("btn-save-imped").addEventListener("click", salvarImpedimento_);
+    document.getElementById("btn-del-imped").addEventListener("click", excluirImpedimento_);
+    document.getElementById("imped-minutos").addEventListener("input", atualizarHHImped_);
+    document.getElementById("imped-funcionarios").addEventListener("change", atualizarHHImped_);
+    document.getElementById("imped-ocupada-ate").addEventListener("change", atualizarRemarcarImped_);
+    document.getElementById("imped-remarcar-data").addEventListener("change", atualizarRemarcarImped_);
+    document.getElementById("imped-data").addEventListener("change", atualizarRemarcarImped_);
+    document.getElementById("imped-setor").addEventListener("input", atualizarRemarcarImped_);
     document.getElementById("ativ-setor").addEventListener("input", atualizarHintSetor_);
     document.getElementById("btn-escolher-setores").addEventListener("click", abrirSeletorSetores_);
     document.getElementById("btn-sugerir-atrasados").addEventListener("click", sugerirSetoresAtrasados_);
@@ -2349,7 +3161,7 @@
     document.getElementById("modal-ativ-overlay").addEventListener("click", function (e) { if (e.target.id === "modal-ativ-overlay") fecharModalAtividade(); });
     document.getElementById("btn-save-ativ").addEventListener("click", salvarAtividade);
     document.getElementById("ativ-duracao").addEventListener("input", atualizarPreviewAtiv);
-    document.getElementById("ativ-data").addEventListener("change", atualizarPreviewAtiv);
+    document.getElementById("ativ-data").addEventListener("change", function () { atualizarPreviewAtiv(); atualizarHintSetor_(); });
     document.getElementById("ativ-funcionarios-list").addEventListener("change", atualizarCalculoAtiv);
     document.getElementById("ativ-atividade").addEventListener("change", atualizarCalculoAtiv);
     document.getElementById("ativ-area").addEventListener("input", atualizarCalculoAtiv);
