@@ -93,6 +93,22 @@
   .bar-count { font-family:'IBM Plex Mono', monospace; font-size:12px; font-weight:600; color:#3A332B; }
   .bar-track { height:10px; background:#EEE7D5; border-radius:5px; overflow:hidden; }
   .bar-fill { height:100%; border-radius:5px; background:#4C6B2F; }
+
+  /* Abas compactas (antes eram 4 botões de largura total empilhados) */
+  .tabs { display:flex; gap:4px; margin-bottom:12px; background:#E4DCC6; padding:4px; border-radius:8px; }
+  .tab-btn { flex:1; border:none; background:transparent; color:#4A4136; font-size:12.5px; font-weight:600; padding:9px 2px; border-radius:6px; cursor:pointer; white-space:nowrap; }
+  .tab-btn.active { background:#4C6B2F; color:#fff; box-shadow:0 1px 3px rgba(0,0,0,.18); }
+
+  /* Navegação de data: ◀ [data] ▶ Hoje */
+  .nav-row { display:flex; gap:6px; align-items:center; margin-bottom:6px; }
+  .nav-row input[type=date] { flex:1; min-width:0; border:1px solid #D2C7AB; background:#FBF8F1; border-radius:3px; padding:9px; font-size:14.5px; color:#241F1A; }
+  .nav-btn { background:#EFE7D3; border:1px solid #D2C7AB; border-radius:4px; padding:9px 12px; font-size:13px; color:#4A4136; cursor:pointer; font-weight:600; }
+  .nav-hoje { background:#2F7DB0; color:#fff; border-color:#2F7DB0; }
+  .nav-sub { font-size:11.5px; color:#6B6153; margin-bottom:12px; font-weight:600; }
+
+  /* Grade da semana: coluna do funcionário fica parada ao rolar pro lado */
+  .sem-func { position:sticky; left:0; z-index:2; box-shadow:2px 0 3px rgba(0,0,0,.06); }
+  .sem-hoje { background:#DCEBD0; border-radius:4px; }
 </style>
 </head>
 <body>
@@ -103,7 +119,7 @@
       <div>
         <div class="plate-label">CONTROLE DE CAMPO</div>
         <div class="plate-title">PROGRAMAÇÃO DE ATIVIDADES</div>
-        <div style="font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:#CFE0BB; margin-top:2px;">v1</div>
+        <div style="font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:#CFE0BB; margin-top:2px;" id="app-version">v1.1</div>
       </div>
       <button class="gear-btn" id="btn-open-config">⚙️</button>
     </div>
@@ -635,12 +651,39 @@
 
   // ================= RENDER =================
   function toggleButtonsHtml_() {
-    return '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">' +
-      '<button class="photo-btn" id="btn-ver-dia" style="' + (visaoAtual === "dia" ? "" : "background:#8A8072;") + '">📅 Dia</button>' +
-      '<button class="photo-btn" id="btn-ver-semana" style="' + (visaoAtual === "semana" ? "" : "background:#8A8072;") + '">🗓 Semana</button>' +
-      '<button class="photo-btn" id="btn-ver-painel" style="' + (visaoAtual === "painel" ? "" : "background:#8A8072;") + '">📊 Painel</button>' +
-      '<button class="photo-btn" id="btn-ver-banco" style="' + (visaoAtual === "banco" ? "" : "background:#8A8072;") + '">🏦 Banco</button>' +
+    var abas = [["dia", "📅 Dia"], ["semana", "🗓 Semana"], ["painel", "📊 Painel"], ["banco", "🏦 Banco"]];
+    return '<div class="tabs">' + abas.map(function (a) {
+      return '<button class="tab-btn' + (visaoAtual === a[0] ? " active" : "") + '" id="btn-ver-' + a[0] + '">' + a[1] + '</button>';
+    }).join("") + '</div>';
+  }
+
+  // Barra ◀ [data] ▶ Hoje - usada no Dia (passo 1 dia) e na Semana (passo 7).
+  var NOMES_DIA_LONGO = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+  function navDataHtml_(idPicker, valor, textoHoje) {
+    return '<div class="nav-row">' +
+      '<button class="nav-btn" data-nav="-1" title="Anterior">◀</button>' +
+      '<input type="date" id="' + idPicker + '" value="' + valor + '">' +
+      '<button class="nav-btn" data-nav="1" title="Próximo">▶</button>' +
+      '<button class="nav-btn nav-hoje" data-nav="0">' + textoHoje + '</button>' +
     '</div>';
+  }
+  function wireNavData_(passoDias) {
+    document.querySelectorAll("#content [data-nav]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var n = parseInt(b.getAttribute("data-nav"), 10);
+        diaSelecionado = n === 0 ? todayStr() : addDiasISO(diaSelecionado, n * passoDias);
+        renderContent();
+      });
+    });
+  }
+  function ehFimDeSemana_(dataISO) {
+    var d = new Date(dataISO + "T00:00:00").getDay();
+    return d === 0 || d === 6;
+  }
+  function proximoDiaUtil_(dataISO) {
+    var d = addDiasISO(dataISO, 1);
+    while (ehFimDeSemana_(d)) d = addDiasISO(d, 1);
+    return d;
   }
   function wireToggleButtons_() {
     document.getElementById("btn-ver-dia").addEventListener("click", function () { visaoAtual = "dia"; renderContent(); });
@@ -658,13 +701,16 @@
   function renderDia() {
     var el = document.getElementById("content");
     var html = toggleButtonsHtml_();
-    html += '<div class="field"><span class="field-label">Data</span><input type="date" id="dia-picker" value="' + diaSelecionado + '"></div>';
+    html += navDataHtml_("dia-picker", diaSelecionado, "Hoje");
+    var dtSel = new Date(diaSelecionado + "T00:00:00");
+    html += '<div class="nav-sub">' + NOMES_DIA_LONGO[dtSel.getDay()] + (diaSelecionado === todayStr() ? ' · hoje' : '') + '</div>';
 
     if (!currentFuncionarios.length) {
       html += '<div class="empty-state">Cadastre os funcionários em ⚙️ Configurações.</div>';
       el.innerHTML = html;
       wireToggleButtons_();
       wireDiaPicker();
+      wireNavData_(1);
       return;
     }
 
@@ -715,6 +761,7 @@
     el.innerHTML = html;
     wireToggleButtons_();
     wireDiaPicker();
+    wireNavData_(1);
     el.querySelectorAll("[data-toggle-concluida]").forEach(function (b) {
       b.addEventListener("click", function () { toggleConcluida(b.getAttribute("data-toggle-concluida")); });
     });
@@ -772,28 +819,35 @@
     var segunda = getSegundaDaSemana(diaSelecionado);
     var dias = [0, 1, 2, 3, 4].map(function (i) { return addDiasISO(segunda, i); });
 
-    html += '<div class="field"><span class="field-label">Semana de</span><input type="date" id="semana-picker" value="' + segunda + '"></div>';
+    html += navDataHtml_("semana-picker", segunda, "Esta semana");
+    var segundaHoje = getSegundaDaSemana(todayStr());
+    var rotuloSemana = segunda === segundaHoje ? "Semana atual"
+      : (segunda === addDiasISO(segundaHoje, 7) ? "Semana que vem"
+      : (segunda === addDiasISO(segundaHoje, -7) ? "Semana passada" : ""));
+    html += '<div class="nav-sub">' + fmtDate(dias[0]).slice(0, 5) + ' a ' + fmtDate(dias[4]).slice(0, 5) + (rotuloSemana ? ' · ' + rotuloSemana : '') + '</div>';
 
     if (!currentFuncionarios.length) {
       html += '<div class="empty-state">Cadastre os funcionários em ⚙️ Configurações.</div>';
       el.innerHTML = html;
       wireToggleButtons_();
       wireSemanaPicker();
+      wireNavData_(7);
       return;
     }
 
     html += '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
-      '<button class="photo-btn" id="btn-copiar-semana-anterior" style="background:#8A5A44;flex:1;">📋 Copiar Semana</button>' +
+      '<button class="photo-btn" id="btn-copiar-semana-anterior" style="background:#8A5A44;flex:1;">📋 Copiar semana anterior</button>' +
       '<button class="photo-btn" id="btn-compartilhar-semana" style="background:#2F7DB0;flex:1;">📤 Compartilhar</button>' +
     '</div>';
     html += '<div style="font-size:11px;color:#8A8072;margin-bottom:8px;">Toque numa célula vazia pra lançar direto. Toque numa preenchida pra editar.</div>';
 
-    html += '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">';
+    html += '<div id="semana-scroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">';
     html += '<table style="border-collapse:separate;border-spacing:3px;width:100%;min-width:660px;">';
-    html += '<tr><th style="text-align:left;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6B6153;padding:4px 6px;width:96px;">FUNCIONÁRIO</th>';
+    html += '<tr><th class="sem-func" style="text-align:left;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6B6153;padding:4px 6px;width:96px;background:#F3EEE0;">FUNCIONÁRIO</th>';
+    var hojeISO = todayStr();
     dias.forEach(function (d) {
       var dt = new Date(d + "T00:00:00");
-      html += '<th style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6B6153;padding:4px 6px;">' +
+      html += '<th class="' + (d === hojeISO ? "sem-hoje" : "") + '" style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6B6153;padding:4px 6px;">' +
         fmtDate(d).slice(0, 5) + '<br><span style="font-size:11px;color:#4A4136;font-weight:700;">' + NOMES_DIA_SEMANA[dt.getDay()] + '</span></th>';
     });
     html += '</tr>';
@@ -803,7 +857,7 @@
     currentFuncionarios.forEach(function (funcObj) {
       var func = funcObj.nome;
       html += '<tr>';
-      html += '<td style="font-size:12px;font-weight:700;padding:6px;vertical-align:middle;background:#FFFDF8;border:1px solid #DCD3BC;border-radius:4px;">' + escapeHtml(func) + '</td>';
+      html += '<td class="sem-func" style="font-size:12px;font-weight:700;padding:6px;vertical-align:middle;background:#FFFDF8;border:1px solid #DCD3BC;border-radius:4px;">' + escapeHtml(func) + '</td>';
       dias.forEach(function (d) {
         var blocos = getRegistrosDia(func, d);
         var ocupadoDia = getMinutosOcupados(func, d);
@@ -859,6 +913,7 @@
 
     el.innerHTML = html;
     wireToggleButtons_();
+    wireNavData_(7);
     document.getElementById("btn-copiar-semana-anterior").addEventListener("click", function () { copiarSemanaAnterior(segunda); });
     document.getElementById("btn-compartilhar-semana").addEventListener("click", function () { compartilharSemana(segunda, dias); });
     wireSemanaPicker();
@@ -1032,10 +1087,19 @@
     var entradas = currentFuncionarios.map(function (f) { return { nome: f.nome, metaHa: f.metaHa || 0, ha: totais[f.nome] || 0 }; })
       .sort(function (a, b) { return b.ha - a.ha; });
     var somaTotal = entradas.reduce(function (s, e) { return s + e.ha; }, 0);
+    // Área real da fazenda: quando 4 pessoas fazem juntas 18 ha, cada uma
+    // ganha os 18 ha no ranking, mas o total da fazenda é 18 - não 72.
+    // Agrupa os blocos iguais (mesmo dia/atividade/setor/área) pra contar uma vez.
+    var areaUnica = {};
+    registros.forEach(function (r) {
+      if (r._pendingDelete || !r.areaHa || r.data < painelDataInicio || r.data > painelDataFim) return;
+      areaUnica[r.data + "|" + r.atividade + "|" + (r.setor || "") + "|" + r.areaHa] = r.areaHa;
+    });
+    var somaAreaFazenda = Object.keys(areaUnica).reduce(function (s, k) { return s + areaUnica[k]; }, 0);
     var maiorValor = Math.max.apply(null, entradas.map(function (e) { return e.ha; }).concat([0.0001]));
 
     html += '<div class="kpi-row">' +
-      '<div class="kpi-tile"><div class="kpi-num">' + round2Painel_(somaTotal) + '</div><div class="kpi-label">HECTARES NO TOTAL</div></div>' +
+      '<div class="kpi-tile"><div class="kpi-num">' + round2Painel_(somaAreaFazenda) + '</div><div class="kpi-label">HECTARES FEITOS (ÁREA)</div></div>' +
       '<div class="kpi-tile"><div class="kpi-num">' + fmtDate(painelDataInicio).slice(0, 5) + '–' + fmtDate(painelDataFim).slice(0, 5) + '</div><div class="kpi-label">PERÍODO</div></div>' +
     '</div>';
 
@@ -1234,7 +1298,7 @@
   var pendingDeleteBancoId = null;
   function abrirModalExcluirBanco(id) {
     pendingDeleteBancoId = id;
-    document.getElementById("del-banco-pass").value = "";
+    document.getElementById("del-banco-pass").value = adminPassSessao;
     document.getElementById("del-banco-result").style.display = "none";
     document.getElementById("modal-del-banco-overlay").classList.add("active");
   }
@@ -1245,10 +1309,17 @@
     resultEl.className = "test-result"; resultEl.style.display = "block";
     if (!config.url) { resultEl.className = "test-result fail"; resultEl.textContent = "Configure a sincronização primeiro."; return; }
     if (!pass) { resultEl.className = "test-result fail"; resultEl.textContent = "Digite a senha de administrador."; return; }
+    var alvoB = lancamentosBanco.find(function (l) { return l.id === pendingDeleteBancoId; });
+    if (alvoB && !alvoB._synced && !syncing) {
+      lancamentosBanco = lancamentosBanco.filter(function (l) { return l.id !== pendingDeleteBancoId; });
+      saveLancamentosBanco(); showToast("Lançamento excluído."); fecharModalExcluirBanco(); renderContent();
+      return;
+    }
     if (!navigator.onLine) { resultEl.className = "test-result fail"; resultEl.textContent = "Precisa de internet."; return; }
     resultEl.textContent = "Excluindo...";
     postToBackend({ action: "delete_banco_horas", adminToken: pass, id: pendingDeleteBancoId }).then(function (res) {
       if (res && res.ok) {
+        adminPassSessao = pass;
         lancamentosBanco = lancamentosBanco.filter(function (l) { return l.id !== pendingDeleteBancoId; });
         saveLancamentosBanco();
         showToast("Lançamento excluído.");
@@ -1373,11 +1444,25 @@
     if (registro) atividadeSel.value = registro.atividade;
 
     var listaFunc = document.getElementById("ativ-funcionarios-list");
+    // Editando: dá pra trocar o funcionário (desmarca um, marca outro), mas
+    // só um por vez - o bloco é de uma pessoa só.
     listaFunc.innerHTML = currentFuncionarios.map(function (f) {
       var marcado = registro ? (registro.funcionario === f.nome) : (funcPre === f.nome);
-      var disabled = registro ? "disabled" : ""; // editando: não muda de funcionário, só os dados
-      return '<label class="checkbox-row"><input type="checkbox" value="' + escapeHtml(f.nome) + '" ' + (marcado ? "checked" : "") + ' ' + disabled + '> ' + escapeHtml(f.nome) + '</label>';
+      return '<label class="checkbox-row"><input type="checkbox" value="' + escapeHtml(f.nome) + '" ' + (marcado ? "checked" : "") + '> ' + escapeHtml(f.nome) + '</label>';
     }).join("");
+
+    // Tamanho da equipe original: o registro não guarda, então deduz pela
+    // própria conta do rendimento (área ÷ quanto 1 pessoa faz no tempo do
+    // bloco). Antes, ao editar, recalculava como se fosse 1 pessoa só e a
+    // duração explodia.
+    editingEquipe = 1;
+    if (registro) {
+      var objR = getAtividadeObj(registro.atividade);
+      if (temRendimento(objR) && registro.areaHa > 0 && registro.duracaoMin > 0) {
+        var haPorPessoaNoBloco = (objR.rendimentoHa / objR.rendimentoPessoas) * (registro.duracaoMin / MINUTOS_UTEIS_DIA);
+        editingEquipe = Math.max(1, Math.round(registro.areaHa / haPorPessoaNoBloco));
+      }
+    }
 
     document.getElementById("ativ-setor-lista").innerHTML = currentSetoresAtiv.map(function (s) { return '<option value="' + escapeHtml(s) + '">'; }).join("");
     document.getElementById("ativ-setor").value = registro ? (registro.setor || "") : "";
@@ -1389,9 +1474,14 @@
     atualizarCalculoAtiv();
     document.getElementById("modal-ativ-overlay").classList.add("active");
   }
+  var editingEquipe = 1;
   function fecharModalAtividade() {
     document.getElementById("modal-ativ-overlay").classList.remove("active");
     editingId = null;
+  }
+  // Quantas pessoas contam pro cálculo de duração por rendimento.
+  function tamanhoEquipeCalculo_(funcs) {
+    return editingId ? editingEquipe : (funcs.length || 1);
   }
   function funcionariosSelecionados() {
     return Array.prototype.slice.call(document.querySelectorAll("#ativ-funcionarios-list input:checked")).map(function (c) { return c.value; });
@@ -1410,9 +1500,10 @@
 
     if (temRendimento(atividadeObj)) {
       areaWrap.style.display = "";
-      rendInfo.textContent = "Rendimento cadastrado: " + atividadeObj.rendimentoPessoas + " pessoa(s) fazem " + atividadeObj.rendimentoHa + " ha/dia.";
+      rendInfo.textContent = "Rendimento cadastrado: " + atividadeObj.rendimentoPessoas + " pessoa(s) fazem " + atividadeObj.rendimentoHa + " ha/dia." +
+        (editingId ? " Calculando com equipe de " + editingEquipe + " pessoa(s)." : "");
       var areaHa = parseFloat(document.getElementById("ativ-area").value);
-      var duracaoCalc = calcularDuracaoPorRendimento(atividadeObj, areaHa, funcs.length || 1);
+      var duracaoCalc = calcularDuracaoPorRendimento(atividadeObj, areaHa, tamanhoEquipeCalculo_(funcs));
       document.getElementById("ativ-duracao-label").textContent = "Duração calculada (h:min)";
       duracaoInput.disabled = true;
       if (duracaoCalc !== null) duracaoInput.value = minToTime(duracaoCalc);
@@ -1432,8 +1523,12 @@
     var preview = document.getElementById("ativ-preview");
     if (!funcs.length || !data) { preview.textContent = "Selecione o(s) funcionário(s) pra ver o horário."; return; }
     if (!duracaoMin) { preview.textContent = "Preencha a área (ou a duração) pra calcular o horário."; return; }
+    var original = editingId ? registros.find(function (r) { return r.id === editingId; }) : null;
     var linhas = funcs.map(function (f) {
-      var inicio = editingId ? registros.find(function (r) { return r.id === editingId; }).horarioInicio : getProximoHorarioLivre(f, data);
+      // editando no mesmo dia/pessoa: mantém o lugar na fila; se mudou o dia
+      // ou a pessoa, vai pro fim da fila do destino
+      var mesmoLugar = original && original.data === data && original.funcionario === f;
+      var inicio = mesmoLugar ? original.horarioInicio : getProximoHorarioLivre(f, data);
       var fim = somarComPausa(inicio, duracaoMin);
       return f + ": " + inicio + " → " + fim;
     });
@@ -1638,7 +1733,7 @@
     duplicandoId = id;
     document.getElementById("dup-resumo").textContent =
       r.atividade + (r.setor ? " · " + r.setor : "") + " — hoje em " + fmtDate(r.data) + " com " + r.funcionario;
-    document.getElementById("dup-data").value = addDiasISO(r.data, 1);
+    document.getElementById("dup-data").value = proximoDiaUtil_(r.data);
     document.getElementById("dup-setor-lista").innerHTML =
       currentSetoresAtiv.map(function (x) { return '<option value="' + escapeHtml(x) + '">'; }).join("");
     document.getElementById("dup-setor").value = r.setor || "";
@@ -1711,10 +1806,14 @@
     var dataAtual = dataInicial;
     var restante = duracaoTotal;
     var tentativas = 0;
+    // Continuação pula sábado/domingo (antes caía no fim de semana e sumia
+    // da grade, que só mostra seg-sex). Plantonista noturno não pula.
+    var noturno = getFuncionarioObj(func).turno === "noturno";
+    function proximo_(d) { return noturno ? addDiasISO(d, 1) : proximoDiaUtil_(d); }
     while (restante > 0 && tentativas < 60) {
       tentativas++;
       var capacidade = MINUTOS_UTEIS_DIA - getMinutosOcupados(func, dataAtual);
-      if (capacidade <= 0) { dataAtual = addDiasISO(dataAtual, 1); continue; }
+      if (capacidade <= 0) { dataAtual = proximo_(dataAtual); continue; }
       var duracaoBloco = Math.min(restante, capacidade);
       var proporcao = duracaoBloco / duracaoTotal;
       var areaBloco = areaHaTotal ? round2Painel_(areaHaTotal * proporcao) : 0;
@@ -1727,7 +1826,7 @@
         _synced: false, _pendingDelete: false
       });
       restante -= duracaoBloco;
-      if (restante > 0) dataAtual = addDiasISO(dataAtual, 1);
+      if (restante > 0) dataAtual = proximo_(dataAtual);
     }
     return blocos;
   }
@@ -1741,7 +1840,7 @@
     var areaHa = parseFloat(document.getElementById("ativ-area").value) || 0;
     var duracaoMin;
     if (temRendimento(atividadeObj)) {
-      duracaoMin = calcularDuracaoPorRendimento(atividadeObj, areaHa, funcs.length || 1);
+      duracaoMin = calcularDuracaoPorRendimento(atividadeObj, areaHa, tamanhoEquipeCalculo_(funcs));
       if (!areaHa) { showToast("Preencha a área a fazer (ha)."); return; }
     } else {
       duracaoMin = timeToMin(document.getElementById("ativ-duracao").value);
@@ -1750,13 +1849,23 @@
     if (!data) { showToast("Preencha a data."); return; }
     if (!duracaoMin) { showToast("Preencha a duração."); return; }
     if (!funcs.length) { showToast("Selecione ao menos um funcionário."); return; }
+    if (editingId && funcs.length > 1) { showToast("Editando: marque só um funcionário (use 📋 Duplicar pra outra pessoa)."); return; }
 
     if (editingId) {
       var r = registros.find(function (r) { return r.id === editingId; });
       if (r) {
+        var dataAntiga = r.data, funcAntigo = r.funcionario;
+        var mudouLugar = (dataAntiga !== data || funcAntigo !== funcs[0]);
         r.atividade = atividade; r.setor = setor; r.duracaoMin = duracaoMin; r.areaHa = areaHa; r.observacao = observacao;
+        if (mudouLugar) {
+          // Antes a data editada era ignorada. Agora o bloco muda de dia
+          // e/ou de pessoa e entra no fim da fila do destino.
+          r.horarioInicio = getProximoHorarioLivre(funcs[0], data);
+          r.data = data; r.funcionario = funcs[0];
+        }
         r.horarioFim = somarComPausa(r.horarioInicio, duracaoMin);
         if (r._synced) r._pendingUpdate = true;
+        if (mudouLugar) recalcularCascata(funcAntigo, dataAntiga); // fecha o buraco que ficou
         recalcularCascata(r.funcionario, r.data); // ajusta as atividades seguintes desse funcionário
       }
     } else {
@@ -1775,32 +1884,47 @@
   }
 
   // ================= EXCLUIR =================
+  // Senha de admin fica guardada só enquanto o app está aberto (memória,
+  // não vai pro armazenamento) - pra não digitar a cada exclusão.
+  var adminPassSessao = "";
   var pendingDeleteId = null;
   function abrirModalExcluir(id) {
     pendingDeleteId = id;
-    document.getElementById("del-ativ-pass").value = "";
+    var r = registros.find(function (x) { return x.id === id; });
+    document.getElementById("del-ativ-pass").value = adminPassSessao;
     document.getElementById("del-ativ-result").style.display = "none";
+    var sub = document.querySelector("#modal-del-ativ-overlay .modal-sub");
+    sub.innerHTML = (r ? "<b>" + escapeHtml(r.atividade) + (r.setor ? " · " + escapeHtml(r.setor) : "") + "</b> — " + escapeHtml(r.funcionario) + ", " + fmtDate(r.data) + " " + escapeHtml(r.horarioInicio) + "–" + escapeHtml(r.horarioFim) + "<br>" : "") +
+      (r && !r._synced ? "Ainda não foi pra planilha - exclui direto no celular." : "Essa ação precisa da senha de administrador e de internet.");
     document.getElementById("modal-del-ativ-overlay").classList.add("active");
   }
   function fecharModalExcluir() { document.getElementById("modal-del-ativ-overlay").classList.remove("active"); }
+  function removerAtividadeLocal_(id) {
+    var registro = registros.find(function (r) { return r.id === id; });
+    marcarApagado_(id);
+    registros = registros.filter(function (r) { return r.id !== id; });
+    saveRegistros();
+    if (registro) recalcularCascata(registro.funcionario, registro.data);
+    showToast("Atividade excluída.");
+    fecharModalExcluir();
+    renderContent();
+  }
   function confirmarExcluir() {
     var pass = document.getElementById("del-ativ-pass").value.trim();
     var resultEl = document.getElementById("del-ativ-result");
     resultEl.className = "test-result"; resultEl.style.display = "block";
+    var alvo = registros.find(function (r) { return r.id === pendingDeleteId; });
+    // Atividade que nunca subiu pra planilha (criada offline): não tem o que
+    // apagar no servidor - antes dava erro e não deixava excluir.
+    if (alvo && !alvo._synced && !syncing) { removerAtividadeLocal_(pendingDeleteId); return; }
     if (!config.url) { resultEl.className = "test-result fail"; resultEl.textContent = "Configure a sincronização primeiro."; return; }
     if (!pass) { resultEl.className = "test-result fail"; resultEl.textContent = "Digite a senha de administrador."; return; }
     if (!navigator.onLine) { resultEl.className = "test-result fail"; resultEl.textContent = "Precisa de internet."; return; }
     resultEl.textContent = "Excluindo...";
     postToBackend({ action: "delete_atividade_prog", adminToken: pass, id: pendingDeleteId }).then(function (res) {
       if (res && res.ok) {
-        var registro = registros.find(function (r) { return r.id === pendingDeleteId; });
-        marcarApagado_(pendingDeleteId);
-        registros = registros.filter(function (r) { return r.id !== pendingDeleteId; });
-        saveRegistros();
-        if (registro) recalcularCascata(registro.funcionario, registro.data);
-        showToast("Atividade excluída.");
-        fecharModalExcluir();
-        renderContent();
+        adminPassSessao = pass;
+        removerAtividadeLocal_(pendingDeleteId);
       } else {
         resultEl.className = "test-result fail";
         resultEl.textContent = (res && res.error) ? res.error : "Não consegui excluir.";
@@ -1817,14 +1941,46 @@
     if (!config.url || !config.token) { dot.style.background = "#8A8072"; txt.textContent = "Configure a sincronização"; return; }
     if (!navigator.onLine) { dot.style.background = "#B4442E"; txt.textContent = "Offline"; return; }
     if (syncing) { dot.style.background = "#2F7DB0"; txt.textContent = "Sincronizando..."; return; }
+    var pend = contarPendentes_();
+    if (pend) { dot.style.background = "#D6A233"; txt.textContent = pend + " alteração(ões) aguardando envio"; return; }
     dot.style.background = "#4C7C59"; txt.textContent = "Sincronizado";
   }
+  function contarPendentes_() {
+    function n(lista) { return lista.filter(function (x) { return !x._synced || x._pendingUpdate; }).length; }
+    return n(registros) + n(rendimentosDiarios) + n(lancamentosBanco);
+  }
 
-  function trySync() {
+  // A sincronização automática redesenhava a tela inteira a cada 25s: apagava
+  // o que estava sendo digitado no "Rendimento real do dia" e jogava a grade
+  // da semana de volta pro começo. Agora: não redesenha com campo em foco ou
+  // janela aberta, não redesenha se nada mudou, e mantém a rolagem.
+  var ultimaRespostaSync = "";
+  var renderAdiado = false;
+  function usuarioOcupado_() {
+    if (document.querySelector(".modal-overlay.active")) return true;
+    var a = document.activeElement;
+    return !!(a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT") && document.getElementById("content").contains(a));
+  }
+  function renderPreservandoRolagem_() {
+    if (usuarioOcupado_()) { renderAdiado = true; return; }
+    renderAdiado = false;
+    var sc = document.getElementById("semana-scroll");
+    var esq = sc ? sc.scrollLeft : 0;
+    var y = window.scrollY;
+    renderContent();
+    var sc2 = document.getElementById("semana-scroll");
+    if (sc2) sc2.scrollLeft = esq;
+    window.scrollTo(0, y);
+  }
+  var ultimoErroSync = "";
+
+  function trySync(manual) {
     if (!config.url || !config.token || !navigator.onLine || syncing) { refreshSyncPill(); return Promise.resolve(); }
     syncing = true; refreshSyncPill();
     var chain = Promise.resolve();
     var errosSync = [];
+    var enviouAlgo = contarPendentes_() > 0;
+    var dadosMudaram = false;
 
     var toCreate = registros.filter(function (r) { return !r._synced; });
     var toUpdate = registros.filter(function (r) { return r._synced && r._pendingUpdate && !r._pendingDelete; });
@@ -1901,7 +2057,10 @@
 
     chain = chain.then(function () {
       return fetch(config.url + "?t=" + Date.now()).then(function (r) { return r.text(); }).then(function (text) {
+        if (text === ultimaRespostaSync && !enviouAlgo) return; // nada novo no servidor
         var res = JSON.parse(text);
+        ultimaRespostaSync = text;
+        dadosMudaram = true;
         if (res.atividadesLista && res.atividadesLista.length) {
           currentAtividades = res.atividadesLista;
           localStorage.setItem(ATIVIDADES_CACHE_KEY, JSON.stringify(currentAtividades));
@@ -1997,8 +2156,16 @@
     return chain.then(function () {
       syncing = false;
       refreshSyncPill();
-      if (errosSync.length) showToast("Erro ao sincronizar: " + errosSync[0]);
-      renderContent();
+      if (errosSync.length) {
+        // mesmo erro repetido a cada ciclo automático vira spam - só avisa
+        // se for erro novo ou se o toque foi no "Sincronizar agora"
+        if (manual || errosSync[0] !== ultimoErroSync) showToast("Erro ao sincronizar: " + errosSync[0]);
+        ultimoErroSync = errosSync[0];
+      } else {
+        ultimoErroSync = "";
+        if (manual) showToast("Tudo sincronizado ✓");
+      }
+      if (dadosMudaram || enviouAlgo || manual) renderPreservandoRolagem_();
     }).catch(function (err) {
       syncing = false; refreshSyncPill();
       showToast("Erro ao sincronizar: " + (err && err.message ? err.message : String(err)));
@@ -2171,7 +2338,11 @@
     });
     document.getElementById("btn-confirmar-setores").addEventListener("click", confirmarSeletorSetores_);
 
-    document.getElementById("btn-sync-now").addEventListener("click", function () { trySync(); });
+    document.getElementById("btn-sync-now").addEventListener("click", function () { trySync(true); });
+    // redesenho que ficou adiado (campo em foco / janela aberta) acontece
+    // assim que a pessoa sai do campo ou fecha a janela
+    document.addEventListener("focusout", function () { setTimeout(function () { if (renderAdiado) renderPreservandoRolagem_(); }, 300); });
+    document.addEventListener("click", function () { setTimeout(function () { if (renderAdiado) renderPreservandoRolagem_(); }, 300); });
 
     document.getElementById("btn-nova-atividade").addEventListener("click", function () { abrirModalAtividade(null); });
     document.getElementById("btn-close-ativ").addEventListener("click", fecharModalAtividade);
@@ -2206,7 +2377,10 @@
 
     window.addEventListener("online", function () { refreshSyncPill(); trySync(); });
     window.addEventListener("offline", refreshSyncPill);
-    setInterval(function () { if (navigator.onLine) trySync(); }, 25000);
+    // Sincroniza a cada 60s só com o app na tela (economiza dados/bateria),
+    // e na hora que o app volta pro primeiro plano.
+    setInterval(function () { if (navigator.onLine && document.visibilityState === "visible") trySync(); }, 60000);
+    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && navigator.onLine) trySync(); });
     if (navigator.onLine) trySync();
 
     if ("serviceWorker" in navigator) {
