@@ -122,6 +122,20 @@
   .bloco.impedida { background:#F8E1DA; border:1px solid #E0A493; }
   .imped-tag { display:flex; align-items:center; gap:6px; background:#B4442E; color:#fff; font-size:11px; font-weight:700; border-radius:4px; padding:5px 8px; margin-top:6px; cursor:pointer; line-height:1.3; }
   .bloco-acoes { display:flex; gap:2px; justify-content:flex-end; margin-top:4px; }
+  /* Atividade curta: uma linha (horário · atividade · setor); o resto abre no toque */
+  .bloco-curto { padding:7px 9px; margin-bottom:4px; cursor:pointer; }
+  .bloco-linha { display:flex; align-items:center; gap:8px; }
+  .bloco-linha .bloco-horario { flex-shrink:0; font-size:11px; }
+  .bloco-linha .bloco-atividade { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bloco-sinais { flex-shrink:0; font-size:11px; white-space:nowrap; color:#8A8072; }
+  .bloco-detalhe { margin-top:6px; padding-top:5px; border-top:1px solid rgba(0,0,0,.08); }
+  .bloco-curto.aberto { outline:2px solid #4C6B2F; outline-offset:-1px; }
+  .sem-cel { border-radius:5px; padding:4px 6px; margin-bottom:3px; font-size:10.5px; cursor:pointer; line-height:1.3; }
+  .sem-cel-nome { font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sem-cel-sub { color:#4A4136; font-size:9.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sem-cel { max-width:124px; }
+  .sem-cel.aberto { outline:2px solid #4C6B2F; outline-offset:-1px; }
+  .bloco-curto.aberto .bloco-atividade, .sem-cel.aberto .sem-cel-nome { white-space:normal; }
   .bloco-acoes .del-btn { font-size:17px; padding:4px 7px; }
   .imped-item { border-top:1px solid #EFE2DC; padding:9px 0; cursor:pointer; }
   .imped-item:first-of-type { border-top:none; }
@@ -163,7 +177,7 @@
       <div>
         <div class="plate-label">CONTROLE DE CAMPO</div>
         <div class="plate-title">PROGRAMAÇÃO DE ATIVIDADES</div>
-        <div style="font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:#CFE0BB; margin-top:2px;" id="app-version">v1.6</div>
+        <div style="font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:#CFE0BB; margin-top:2px;" id="app-version">v1.7</div>
       </div>
       <button class="gear-btn" id="btn-open-config">⚙️</button>
     </div>
@@ -642,6 +656,7 @@
 
   var diaSelecionado = todayStr();
   var visaoAtual = "dia"; // "dia", "semana" ou "painel"
+  var blocoAberto = null; // id da atividade aberta (mostra detalhes e botões)
   var painelDataInicio = null; // definido no init (segunda da semana atual)
   var painelDataFim = null; // definido no init (hoje)
   var editingId = null;
@@ -1169,23 +1184,29 @@
       } else {
         blocos.forEach(function (r) {
           var im = impedDoBloco_(r, mapaImped);
-          html += '<div class="bloco' + (im ? " impedida" : "") + '" style="' + (r.concluida ? "opacity:.65;" : "") + '">' +
-            '<div class="bloco-top">' +
-              '<span class="bloco-atividade" style="' + (r.concluida || im ? "text-decoration:line-through;" : "") + '">' + escapeHtml(r.atividade) + (r.setor ? ' <span style="font-weight:400;color:#6B6153;">· ' + escapeHtml(r.setor) + '</span>' : '') + '</span>' +
+          var aberto = blocoAberto === r.id;
+          var conflito = im ? "" : htmlConflitoBloco_(r, false);
+          var sinais = (im ? "⛔" : "") + (conflito ? "🚜" : "") + (!aberto && r.observacao ? "📝" : "") + (aberto ? " ▴" : " ▾");
+          html += '<div class="bloco bloco-curto' + (im ? " impedida" : "") + (aberto ? " aberto" : "") + '" data-abrir-bloco="' + r.id + '" style="' + (r.concluida && !aberto ? "opacity:.6;" : "") + '">' +
+            '<div class="bloco-linha">' +
               '<span class="bloco-horario">' + escapeHtml(r.horarioInicio) + '–' + escapeHtml(r.horarioFim) + '</span>' +
+              '<span class="bloco-atividade" style="' + (r.concluida || im ? "text-decoration:line-through;" : "") + '">' + (r.concluida ? "✅ " : "") + escapeHtml(r.atividade) + (r.setor ? ' <span style="font-weight:400;color:#6B6153;">· ' + escapeHtml(r.setor) + '</span>' : '') + '</span>' +
+              '<span class="bloco-sinais">' + sinais + '</span>' +
             '</div>' +
-            (r.areaHa ? '<div class="bloco-obs">🌱 ' + r.areaHa + ' ha</div>' : '') +
-            (r.observacao ? '<div class="bloco-obs">📝 ' + escapeHtml(r.observacao) + '</div>' : '') +
-            (im ? '' : htmlConflitoBloco_(r, false)) +
-            (im ? '<div class="imped-tag" data-ver-imped="' + im.id + '">⛔ Impedida · ' + escapeHtml(im.equipe) +
-                  (im.remarcadaPara ? ' · remarcada p/ ' + fmtDate(im.remarcadaPara).slice(0, 5) : ' · não remarcada') + '</div>' : '') +
-            '<div class="bloco-acoes">' +
-              '<button class="del-btn" data-toggle-concluida="' + r.id + '" title="' + (r.concluida ? "Marcar como pendente" : "Marcar como concluída") + '">' + (r.concluida ? "✅" : "⬜") + '</button>' +
-              '<button class="del-btn" data-imped-ativ="' + r.id + '" title="Impedida por outra equipe">⛔</button>' +
-              '<button class="del-btn" data-dup-ativ="' + r.id + '" title="Duplicar">📋</button>' +
-              '<button class="del-btn" data-edit-ativ="' + r.id + '" title="Editar">✏️</button>' +
-              '<button class="del-btn" data-del-ativ="' + r.id + '" title="Excluir">🗑</button>' +
-            '</div>' +
+            (aberto ? '<div class="bloco-detalhe">' +
+              (r.areaHa ? '<div class="bloco-obs">🌱 ' + r.areaHa + ' ha</div>' : '') +
+              (r.observacao ? '<div class="bloco-obs">📝 ' + escapeHtml(r.observacao) + '</div>' : '') +
+              conflito +
+              (im ? '<div class="imped-tag" data-ver-imped="' + im.id + '">⛔ Impedida · ' + escapeHtml(im.equipe) +
+                    (im.remarcadaPara ? ' · remarcada p/ ' + fmtDate(im.remarcadaPara).slice(0, 5) : ' · não remarcada') + '</div>' : '') +
+              '<div class="bloco-acoes">' +
+                '<button class="del-btn" data-toggle-concluida="' + r.id + '" title="' + (r.concluida ? "Marcar como pendente" : "Marcar como concluída") + '">' + (r.concluida ? "✅" : "⬜") + '</button>' +
+                '<button class="del-btn" data-imped-ativ="' + r.id + '" title="Impedida por outra equipe">⛔</button>' +
+                '<button class="del-btn" data-dup-ativ="' + r.id + '" title="Duplicar">📋</button>' +
+                '<button class="del-btn" data-edit-ativ="' + r.id + '" title="Editar">✏️</button>' +
+                '<button class="del-btn" data-del-ativ="' + r.id + '" title="Excluir">🗑</button>' +
+              '</div>' +
+            '</div>' : '') +
           '</div>';
         });
       }
@@ -1207,26 +1228,42 @@
     wireDiaPicker();
     wireNavData_(1);
     el.querySelectorAll("[data-toggle-concluida]").forEach(function (b) {
-      b.addEventListener("click", function () { toggleConcluida(b.getAttribute("data-toggle-concluida")); });
+      b.addEventListener("click", function (e) { e.stopPropagation(); toggleConcluida(b.getAttribute("data-toggle-concluida")); });
     });
     el.querySelectorAll("[data-dup-ativ]").forEach(function (b) {
-      b.addEventListener("click", function () { abrirModalDuplicar(b.getAttribute("data-dup-ativ")); });
+      b.addEventListener("click", function (e) { e.stopPropagation(); abrirModalDuplicar(b.getAttribute("data-dup-ativ")); });
     });
     el.querySelectorAll("[data-imped-ativ]").forEach(function (b) {
-      b.addEventListener("click", function () { abrirModalImpedimento(b.getAttribute("data-imped-ativ"), null); });
+      b.addEventListener("click", function (e) { e.stopPropagation(); abrirModalImpedimento(b.getAttribute("data-imped-ativ"), null); });
     });
     el.querySelectorAll("[data-ver-imped]").forEach(function (b) {
-      b.addEventListener("click", function () { abrirModalImpedimento(null, b.getAttribute("data-ver-imped")); });
+      b.addEventListener("click", function (e) { e.stopPropagation(); abrirModalImpedimento(null, b.getAttribute("data-ver-imped")); });
     });
     el.querySelectorAll("[data-edit-ativ]").forEach(function (b) {
-      b.addEventListener("click", function () { abrirModalAtividade(b.getAttribute("data-edit-ativ")); });
+      b.addEventListener("click", function (e) { e.stopPropagation(); abrirModalAtividade(b.getAttribute("data-edit-ativ")); });
     });
     el.querySelectorAll("[data-del-ativ]").forEach(function (b) {
-      b.addEventListener("click", function () { abrirModalExcluir(b.getAttribute("data-del-ativ")); });
+      b.addEventListener("click", function (e) { e.stopPropagation(); abrirModalExcluir(b.getAttribute("data-del-ativ")); });
     });
+    wireAbrirBloco_(el);
     el.querySelectorAll("[data-rendimento-func]").forEach(function (inp) {
       inp.addEventListener("blur", function () {
         salvarRendimentoDiario(inp.getAttribute("data-rendimento-func"), diaSelecionado, inp.value.trim());
+      });
+    });
+  }
+  // Toque na atividade: abre (detalhes e botões) ou fecha. Mantém a rolagem.
+  function wireAbrirBloco_(el) {
+    el.querySelectorAll("[data-abrir-bloco]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var id = b.getAttribute("data-abrir-bloco");
+        blocoAberto = blocoAberto === id ? null : id;
+        var sc = document.getElementById("semana-scroll");
+        var esq = sc ? sc.scrollLeft : 0, y = window.scrollY;
+        renderContent();
+        var sc2 = document.getElementById("semana-scroll");
+        if (sc2) sc2.scrollLeft = esq;
+        window.scrollTo(0, y);
       });
     });
   }
@@ -1298,7 +1335,7 @@
       '<div class="hint" style="margin-bottom:10px;">' + (pdfsSemana.length
         ? 'PDFs desta semana: <b>' + escapeHtml(pdfsSemana.join(", ")) + '</b>'
         : 'Nenhum PDF das outras equipes pra esta semana ainda.') + '</div>';
-    html += '<div style="font-size:11px;color:#8A8072;margin-bottom:8px;">Toque numa célula vazia pra lançar direto. Toque numa preenchida pra editar.</div>';
+    html += '<div style="font-size:11px;color:#8A8072;margin-bottom:8px;">Toque no + pra lançar. Toque numa atividade pra ver os detalhes e os botões (✏️ editar, 🗑 excluir...).</div>';
 
     html += '<div id="semana-scroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">';
     html += '<table style="border-collapse:separate;border-spacing:3px;width:100%;min-width:660px;">';
@@ -1353,22 +1390,29 @@
             var im = impedDoBloco_(r, mapaImpedSem);
             if (im) teveImpedidaSem = true;
             var cor = im ?{ fundo: "#F8E1DA", borda: "#C9533A" } : corDaAtividade_(r.atividade);
-            html += '<div style="background:' + cor.fundo + ';border:1px solid ' + cor.borda + ';border-radius:5px;padding:5px 6px;margin-bottom:3px;font-size:10.5px;' + (r.concluida ? "opacity:.55;" : "") + '">' +
-              '<div data-edit-cel="' + r.id + '" style="cursor:pointer;">' +
-                '<div style="font-weight:700;line-height:1.25;' + (r.concluida || im ? "text-decoration:line-through;" : "") + '">' + (r.concluida ? "✅ " : "") + escapeHtml(r.atividade) + '</div>' +
-                (r.setor ? '<div style="font-weight:600;color:#4A4136;">' + escapeHtml(r.setor) + '</div>' : '') +
-                '<div style="color:#5C5445;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;">' + escapeHtml(r.horarioInicio) + '–' + escapeHtml(r.horarioFim) + '</div>' +
-              '</div>' +
-              (im ? '' : htmlConflitoBloco_(r, true)) +
-              (im ? '<div data-ver-imped="' + im.id + '" style="margin-top:3px;background:#B4442E;color:#fff;border-radius:3px;padding:2px 4px;font-weight:700;font-size:9.5px;cursor:pointer;line-height:1.25;">⛔ ' + escapeHtml(im.equipe) +
-                    (im.remarcadaPara ? ' → ' + fmtDate(im.remarcadaPara).slice(0, 5) : '') + '</div>' : '') +
-              '<div style="display:flex;gap:4px;justify-content:flex-end;margin-top:3px;border-top:1px solid rgba(0,0,0,.08);padding-top:3px;">' +
-                '<button data-toggle-cel="' + r.id + '" title="' + (r.concluida ? "Marcar como pendente" : "Marcar como concluída") + '" style="background:none;border:none;font-size:12px;cursor:pointer;padding:0 2px;">' + (r.concluida ? "✅" : "⬜") + '</button>' +
-                '<button data-imped-cel="' + r.id + '" title="Impedida por outra equipe" style="background:none;border:none;font-size:12px;cursor:pointer;padding:0 2px;">⛔</button>' +
-                '<button data-dup-cel="' + r.id + '" title="Duplicar" style="background:none;border:none;font-size:12px;cursor:pointer;padding:0 2px;">📋</button>' +
-                '<button data-edit-cel="' + r.id + '" title="Editar" style="background:none;border:none;font-size:12px;cursor:pointer;padding:0 2px;">✏️</button>' +
-                '<button data-del-cel="' + r.id + '" title="Excluir" style="background:none;border:none;font-size:12px;cursor:pointer;padding:0 2px;">🗑</button>' +
-              '</div>' +
+            var aberto = blocoAberto === r.id;
+            var conflito = im ? "" : htmlConflitoBloco_(r, true);
+            var sinais = (im ? "⛔" : "") + (conflito ? "🚜" : "") + (r.observacao && !aberto ? "📝" : "");
+            html += '<div class="sem-cel' + (aberto ? " aberto" : "") + '" data-abrir-bloco="' + r.id + '" style="background:' + cor.fundo + ';border:1px solid ' + cor.borda + ';' + (r.concluida && !aberto ? "opacity:.55;" : "") + '">' +
+              '<div class="sem-cel-nome" style="' + (r.concluida || im ? "text-decoration:line-through;" : "") + '">' + (r.concluida ? "✅ " : "") + escapeHtml(r.atividade) + '</div>' +
+              '<div class="sem-cel-sub"><span style="font-family:\'IBM Plex Mono\',monospace;">' + escapeHtml(r.horarioInicio) + '</span>' +
+                (r.setor ? ' · <b>' + escapeHtml(r.setor) + '</b>' : '') + (sinais ? ' ' + sinais : '') + '</div>' +
+              (aberto ?
+                '<div style="margin-top:3px;border-top:1px solid rgba(0,0,0,.08);padding-top:3px;">' +
+                  '<div style="color:#5C5445;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;">' + escapeHtml(r.horarioInicio) + '–' + escapeHtml(r.horarioFim) + '</div>' +
+                  (r.areaHa ? '<div style="color:#5C5445;font-size:9.5px;">🌱 ' + r.areaHa + ' ha</div>' : '') +
+                  (r.observacao ? '<div style="color:#5C5445;font-size:9.5px;white-space:normal;">📝 ' + escapeHtml(r.observacao) + '</div>' : '') +
+                  conflito +
+                  (im ? '<div data-ver-imped="' + im.id + '" style="margin-top:3px;background:#B4442E;color:#fff;border-radius:3px;padding:2px 4px;font-weight:700;font-size:9.5px;cursor:pointer;line-height:1.25;">⛔ ' + escapeHtml(im.equipe) +
+                        (im.remarcadaPara ? ' → ' + fmtDate(im.remarcadaPara).slice(0, 5) : '') + '</div>' : '') +
+                  '<div style="display:flex;gap:4px;justify-content:flex-end;margin-top:3px;">' +
+                    '<button data-toggle-cel="' + r.id + '" title="' + (r.concluida ? "Marcar como pendente" : "Marcar como concluída") + '" style="background:none;border:none;font-size:13px;cursor:pointer;padding:0 2px;">' + (r.concluida ? "✅" : "⬜") + '</button>' +
+                    '<button data-imped-cel="' + r.id + '" title="Impedida por outra equipe" style="background:none;border:none;font-size:13px;cursor:pointer;padding:0 2px;">⛔</button>' +
+                    '<button data-dup-cel="' + r.id + '" title="Duplicar" style="background:none;border:none;font-size:13px;cursor:pointer;padding:0 2px;">📋</button>' +
+                    '<button data-edit-cel="' + r.id + '" title="Editar" style="background:none;border:none;font-size:13px;cursor:pointer;padding:0 2px;">✏️</button>' +
+                    '<button data-del-cel="' + r.id + '" title="Excluir" style="background:none;border:none;font-size:13px;cursor:pointer;padding:0 2px;">🗑</button>' +
+                  '</div>' +
+                '</div>' : '') +
             '</div>';
           });
           if (estourou) {
@@ -1414,6 +1458,7 @@
       b.addEventListener("click", function () { abrirProgDia_(b.getAttribute("data-prog-dia")); });
     });
     wireSemanaPicker();
+    wireAbrirBloco_(el);
     // toque em célula vazia -> já abre o modal com funcionário e dia prontos
     el.querySelectorAll("[data-nova-cel]").forEach(function (b) {
       b.addEventListener("click", function () {
@@ -1817,7 +1862,7 @@
     var bRel = document.getElementById("btn-imped-relatorio");
     if (bRel) bRel.addEventListener("click", enviarRelatorioImpedimentos_);
     el.querySelectorAll("[data-ver-imped]").forEach(function (b) {
-      b.addEventListener("click", function () { abrirModalImpedimento(null, b.getAttribute("data-ver-imped")); });
+      b.addEventListener("click", function (e) { e.stopPropagation(); abrirModalImpedimento(null, b.getAttribute("data-ver-imped")); });
     });
   }
 
